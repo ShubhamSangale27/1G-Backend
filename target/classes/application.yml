@@ -1,0 +1,114 @@
+# =============================================================================
+# REAL ESTATE BACKEND - SINGLE CONFIG FILE
+# Configure database, SMTP, JWT, OTP, Firebase, Stripe, Google Maps, etc.
+# Use environment variables (e.g. DB_HOST, FIREBASE_SERVICE_ACCOUNT_JSON) or
+# set values here. See CONFIG.md for setup steps.
+# =============================================================================
+
+spring:
+  application:
+    name: realestate-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: com.fasterxml.jackson.databind.util.StdDateFormat
+    time-zone: UTC
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api
+
+# -----------------------------------------------------------------------------
+# APP CONFIG - JWT, OTP, Firebase (phone OTP), Stripe, Google Maps, etc.
+# Database: spring.datasource (see dev profile). SMTP: spring.mail (see dev profile).
+# -----------------------------------------------------------------------------
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    access-ttl-ms: ${JWT_ACCESS_TTL:3600000}
+    refresh-ttl-ms: ${JWT_REFRESH_TTL:604800000}
+
+  # OTP - Email OTP (length, expiry). Phone OTP is sent via Firebase.
+  otp:
+    expiry-minutes: ${OTP_EXPIRY_MINUTES:10}
+    length: ${OTP_LENGTH:6}
+
+  # Firebase - Phone Auth. Service account JSON (path or base64) to verify ID tokens.
+  firebase:
+    enabled: ${FIREBASE_ENABLED:false}
+    project-id: ${FIREBASE_PROJECT_ID:}
+    # Path to service account JSON file, or leave empty and set FIREBASE_SERVICE_ACCOUNT_JSON (base64) env var
+    service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
+    # Alternative: base64-encoded JSON (e.g. FIREBASE_SERVICE_ACCOUNT_JSON env var)
+    service-account-json-base64: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
+
+  # Stripe (payments)
+  stripe:
+    api-key: ${STRIPE_API_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+  # Google Maps (optional)
+  google-maps-api-key: ${GOOGLE_MAPS_API_KEY:}
+
+  # Frontend URL (CORS, links in emails)
+  frontend-url: ${FRONTEND_URL:http://localhost:4200}
+
+  # Upload directory for property images
+  upload:
+    dir: ${UPLOAD_DIR:uploads}
+  # From address for emails (OTP, etc.)
+  mail-from: ${MAIL_FROM:noreply@realestate.com}
+
+logging:
+  level:
+    root: INFO
+    com.realestate: DEBUG
+    org.springframework.security: DEBUG
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+
+---
+# DEV PROFILE
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:realestate}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        default_schema: public
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USER:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
