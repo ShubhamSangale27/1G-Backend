@@ -206,7 +206,8 @@ public class SiteVisitService {
         Instant endToday = endOfToday.toInstant();
         long dueTodayCount = siteVisitRepository.countDueBetween(startToday, endToday);
         Pageable pageable = PageRequest.of(page, size);
-        Page<SiteVisit> result = siteVisitRepository.findAllForAdmin(from, to, agentId, startToday, endToday, pageable);
+        Long agentIdParam = (agentId != null) ? agentId : -1L; // -1 = "all agents" for PostgreSQL type inference
+        Page<SiteVisit> result = siteVisitRepository.findAllForAdmin(from, to, agentIdParam, startToday, endToday, pageable);
         List<SiteVisitDto> content = result.getContent().stream().map(SiteVisitDto::from).collect(Collectors.toList());
         return AdminSiteVisitsResponse.builder()
                 .content(content)

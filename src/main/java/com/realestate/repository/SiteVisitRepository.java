@@ -28,7 +28,8 @@ public interface SiteVisitRepository extends JpaRepository<SiteVisit, Long> {
     @Query("SELECT COUNT(sv) FROM SiteVisit sv WHERE sv.scheduledAt >= :start AND sv.scheduledAt < :end AND sv.status IN ('PENDING_ASSIGNMENT', 'ASSIGNED')")
     long countDueBetween(@Param("start") Instant start, @Param("end") Instant end);
 
-    @Query("SELECT sv FROM SiteVisit sv WHERE (:from IS NULL OR sv.scheduledAt >= :from) AND (:to IS NULL OR sv.scheduledAt <= :to) AND (:agentId IS NULL OR sv.agent.id = :agentId) ORDER BY CASE WHEN (sv.scheduledAt >= :startToday AND sv.scheduledAt < :endToday) THEN 0 ELSE 1 END, sv.scheduledAt ASC")
+    /* COALESCE / sentinel avoids "could not determine data type of parameter" in PostgreSQL (no param in IS NULL). Pass agentId = -1 for "all agents". */
+    @Query("SELECT sv FROM SiteVisit sv WHERE (sv.scheduledAt >= COALESCE(:from, sv.scheduledAt)) AND (sv.scheduledAt <= COALESCE(:to, sv.scheduledAt)) AND (sv.agent.id = :agentId OR :agentId = -1) ORDER BY CASE WHEN (sv.scheduledAt >= :startToday AND sv.scheduledAt < :endToday) THEN 0 ELSE 1 END, sv.scheduledAt ASC")
     Page<SiteVisit> findAllForAdmin(@Param("from") Instant from, @Param("to") Instant to, @Param("agentId") Long agentId,
                                     @Param("startToday") Instant startToday, @Param("endToday") Instant endToday,
                                     Pageable pageable);

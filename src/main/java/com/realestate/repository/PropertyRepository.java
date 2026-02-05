@@ -32,13 +32,14 @@ public interface PropertyRepository extends JpaRepository<Property, Long>, JpaSp
 
     Page<Property> findByCreatedAtAfterOrderByCreatedAtDesc(Instant after, Pageable pageable);
 
+    /* COALESCE avoids "could not determine data type of parameter" in PostgreSQL (no param in IS NULL). */
     @Query("SELECT p FROM Property p WHERE p.status = :status " +
-           "AND (:city IS NULL OR LOWER(p.city) LIKE LOWER(CONCAT('%', :city, '%'))) " +
-           "AND (:minPrice IS NULL OR p.price >= :minPrice) " +
-           "AND (:maxPrice IS NULL OR p.price <= :maxPrice) " +
-           "AND (:listingType IS NULL OR p.listingType = :listingType) " +
-           "AND (:propertyType IS NULL OR p.propertyType = :propertyType) " +
-           "AND (:bedrooms IS NULL OR p.bedrooms >= :bedrooms)")
+           "AND (LOWER(p.city) LIKE LOWER(CONCAT('%', COALESCE(:city, ''), '%'))) " +
+           "AND (p.price >= COALESCE(:minPrice, p.price)) " +
+           "AND (p.price <= COALESCE(:maxPrice, p.price)) " +
+           "AND (COALESCE(:listingType, p.listingType) = p.listingType) " +
+           "AND (COALESCE(:propertyType, p.propertyType) = p.propertyType) " +
+           "AND (p.bedrooms >= COALESCE(:bedrooms, p.bedrooms))")
     Page<Property> search(@Param("status") Property.PropertyStatus status,
                           @Param("city") String city,
                           @Param("minPrice") BigDecimal minPrice,
