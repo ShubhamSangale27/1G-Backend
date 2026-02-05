@@ -47,6 +47,7 @@ app:
   otp:
     expiry-minutes: 10
     length: 6
+    log-otp: true   # print OTP in Heroku logs during signup (Postgres profile)
   msg91:
     authkey: ${MSG91_AUTHKEY:}
     sender: ${MSG91_SENDER:}

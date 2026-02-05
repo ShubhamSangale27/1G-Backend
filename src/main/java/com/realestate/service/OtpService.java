@@ -56,6 +56,10 @@ public class OtpService {
     @Value("${app.otp.test-otp:}")
     private String testOtp;
 
+    /** When true (heroku/dev with Postgres), log OTP to console so it can be read from Heroku logs or local console during signup. */
+    @Value("${app.otp.log-otp:false}")
+    private boolean logOtp;
+
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String MSG91_SEND_OTP_URL = "https://api.msg91.com/api/sendotp.php";
 
@@ -85,6 +89,9 @@ public class OtpService {
                 .verified(false)
                 .build();
         otpRepository.save(ov);
+        if (logOtp) {
+            log.info("Signup OTP for mobile {}: {} (use this in verify step or check Heroku logs)", mobile, otp);
+        }
         if (testOtp != null && !testOtp.isBlank()) {
             log.info("Test OTP mode: no SMS sent. Use OTP {} for mobile {}", otp, mobile);
         } else {

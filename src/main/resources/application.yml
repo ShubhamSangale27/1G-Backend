@@ -111,3 +111,8 @@ spring:
           auth: true
           starttls:
             enable: true
+
+# Dev (PostgreSQL): print OTP in console during signup
+app:
+  otp:
+    log-otp: true
