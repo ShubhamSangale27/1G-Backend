@@ -56,9 +56,9 @@ public class AdminController {
 
     @DeleteMapping("/properties/{id}")
     @Operation(summary = "Delete any property (admin)")
-    public ResponseEntity<Void> deleteProperty(@PathVariable Long id) {
+    public ResponseEntity<Map<String, Boolean>> deleteProperty(@PathVariable Long id) {
         propertyService.delete(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(Map.of("deleted", true));
     }
 
     @PutMapping("/properties/{id}/featured")

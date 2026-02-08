@@ -64,7 +64,12 @@ public class ImageUploadService {
             }
 
             if (googleDriveUploadService.isAvailable()) {
-                return uploadToGoogleDrive(original, baseName, ext, format, contentType);
+                try {
+                    return uploadToGoogleDrive(original, baseName, ext, format, contentType);
+                } catch (Exception e) {
+                    log.error("Google Drive upload failed: {}", e.getMessage(), e);
+                    throw new BadRequestException("Google Drive upload failed: " + e.getMessage());
+                }
             }
             return uploadToLocal(original, baseName, ext, format);
         } catch (IOException e) {

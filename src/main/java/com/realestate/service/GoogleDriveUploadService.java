@@ -7,6 +7,7 @@ import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.Permission;
+import java.util.Arrays;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +33,7 @@ import java.util.List;
 public class GoogleDriveUploadService {
 
     private static final String PUBLIC_VIEW_URL_PREFIX = "https://drive.google.com/uc?export=view&id=";
-    private static final List<String> SCOPES = Collections.singletonList(DriveScopes.DRIVE_FILE);
+    private static final List<String> SCOPES = Arrays.asList(DriveScopes.DRIVE);
 
     @Value("${app.google-drive.folder-id:}")
     private String folderId;
@@ -42,6 +43,9 @@ public class GoogleDriveUploadService {
 
     @Value("${app.google-drive.credentials-json:}")
     private String credentialsJson;
+
+    @Value("${app.google-drive.credentials-base64:}")
+    private String credentialsBase64;
 
     private Drive drive;
 
@@ -73,7 +77,8 @@ public class GoogleDriveUploadService {
     public boolean isConfigured() {
         return folderId != null && !folderId.isBlank()
                 && ((credentialsPath != null && !credentialsPath.isBlank())
-                || (credentialsJson != null && !credentialsJson.isBlank()));
+                || (credentialsJson != null && !credentialsJson.isBlank())
+                || (credentialsBase64 != null && !credentialsBase64.isBlank()));
     }
 
     public boolean isAvailable() {
@@ -100,6 +105,7 @@ public class GoogleDriveUploadService {
         File file = drive.files()
                 .create(fileMetadata, mediaContent)
                 .setFields("id")
+                .setSupportsAllDrives(true)
                 .execute();
 
         String fileId = file.getId();
@@ -111,7 +117,7 @@ public class GoogleDriveUploadService {
         Permission permission = new Permission();
         permission.setType("anyone");
         permission.setRole("reader");
-        drive.permissions().create(fileId, permission).execute();
+        drive.permissions().create(fileId, permission).setSupportsAllDrives(true).execute();
 
         String publicUrl = PUBLIC_VIEW_URL_PREFIX + fileId;
         log.debug("Uploaded to Drive: {} -> {}", filename, publicUrl);
@@ -121,6 +127,12 @@ public class GoogleDriveUploadService {
     private GoogleCredentials loadCredentials() throws IOException {
         if (credentialsJson != null && !credentialsJson.isBlank()) {
             try (InputStream in = new ByteArrayInputStream(credentialsJson.getBytes(StandardCharsets.UTF_8))) {
+                return GoogleCredentials.fromStream(in);
+            }
+        }
+        if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
+            byte[] decoded = java.util.Base64.getDecoder().decode(credentialsBase64.trim());
+            try (InputStream in = new ByteArrayInputStream(decoded)) {
                 return GoogleCredentials.fromStream(in);
             }
         }

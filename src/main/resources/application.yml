@@ -62,6 +62,7 @@ app:
     folder-id: ${GOOGLE_DRIVE_FOLDER_ID:1wYcQ625QmwveUa1h4VoQQFZkLitAc0bx}
     credentials-path: ${GOOGLE_DRIVE_CREDENTIALS_PATH:}
     credentials-json: ${GOOGLE_DRIVE_CREDENTIALS_JSON:}
+    credentials-base64: ${GOOGLE_DRIVE_CREDENTIALS_BASE64:}
   # From address for emails (OTP, etc.)
   mail-from: ${MAIL_FROM:noreply@realestate.com}
 

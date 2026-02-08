@@ -122,9 +122,9 @@ public class PropertyController {
     @DeleteMapping("/{id}/watchlist")
     @Operation(summary = "Remove from watchlist")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Void> removeFromWatchlist(@PathVariable Long id, @AuthenticationPrincipal UserPrincipal principal) {
+    public ResponseEntity<Map<String, Boolean>> removeFromWatchlist(@PathVariable Long id, @AuthenticationPrincipal UserPrincipal principal) {
         watchlistService.remove(principal.getId(), id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(Map.of("removed", true));
     }
 
     @GetMapping("/watchlist")
@@ -139,13 +139,13 @@ public class PropertyController {
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete property")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Void> deleteProperty(@PathVariable Long id,
+    public ResponseEntity<Map<String, Boolean>> deleteProperty(@PathVariable Long id,
                                                 @AuthenticationPrincipal UserPrincipal principal) {
         PropertyDto property = propertyService.getById(id, false);
         if (!property.getOwnerId().equals(principal.getId()) && !principal.getRole().equals("ADMIN")) {
             throw new org.springframework.security.access.AccessDeniedException("Not authorized to delete this property");
         }
         propertyService.delete(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(Map.of("deleted", true));
     }
 }
