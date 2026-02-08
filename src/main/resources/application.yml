@@ -55,9 +55,13 @@ app:
   # Frontend URL (CORS, links in emails)
   frontend-url: ${FRONTEND_URL:http://localhost:4200}
 
-  # Upload directory for property images
+  # Upload: Google Drive (preferred) or local directory. See GOOGLE_DRIVE_SETUP.md.
   upload:
     dir: ${UPLOAD_DIR:uploads}
+  google-drive:
+    folder-id: ${GOOGLE_DRIVE_FOLDER_ID:1wYcQ625QmwveUa1h4VoQQFZkLitAc0bx}
+    credentials-path: ${GOOGLE_DRIVE_CREDENTIALS_PATH:}
+    credentials-json: ${GOOGLE_DRIVE_CREDENTIALS_JSON:}
   # From address for emails (OTP, etc.)
   mail-from: ${MAIL_FROM:noreply@realestate.com}
 
