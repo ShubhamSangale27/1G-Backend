@@ -62,6 +62,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .requestMatchers(HttpMethod.GET, "/properties/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/properties/{id}").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/agent/**").hasAnyRole("AGENT", "ADMIN")
                         .anyRequest().authenticated()
