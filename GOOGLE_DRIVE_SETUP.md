@@ -66,4 +66,17 @@ Or copy the JSON content and set in Heroku Dashboard → Settings → Config Var
 ## 6. Security
 
 - Do not commit the service account JSON to git. The repo root `.gitignore` already ignores `guntha-f6ee4-3264caae9768.json` and `*credentials*.json`; add any other key filenames there if you use a different path.
-- The app only needs **Drive API** scope `https://www.googleapis.com/auth/drive.file` (access to files created by the app). Each uploaded file is set to "anyone with the link can view" so the stored URLs work in the frontend without auth.
+- The app uses **Drive API** scope `https://www.googleapis.com/auth/drive` so the service account can create files in a folder shared with it. Each uploaded file is set to "anyone with the link can view" so the stored URLs work in the frontend without auth.
+
+## 7. Troubleshooting (e.g. 400 on Heroku upload)
+
+If `POST /api/upload` returns **400** and logs show "Google Drive API error", check Heroku logs for the **exact status and message** (e.g. `403 Forbidden`, `404 Not Found`). Then:
+
+| Log / status | Cause | Fix |
+|--------------|--------|-----|
+| **403 Forbidden** or "insufficient permissions" | Folder not shared with the service account, or wrong folder ID | In Drive, share the folder with the **service account email** (`client_email` from the JSON) as **Editor**. Confirm the folder ID in the URL matches `GOOGLE_DRIVE_FOLDER_ID`. |
+| **404 Not Found** | Folder ID wrong or folder deleted | Copy the folder ID again from the Drive URL and set `GOOGLE_DRIVE_FOLDER_ID` (or ensure the default in config is correct). |
+| **401 Unauthorized** or "invalid credentials" | Invalid or mangled JSON on Heroku | Use **Base64**: encode the JSON file (e.g. `[Convert]::ToBase64String([IO.File]::ReadAllBytes("key.json"))` in PowerShell) and set `GOOGLE_DRIVE_CREDENTIALS_BASE64` instead of `GOOGLE_DRIVE_CREDENTIALS_JSON`. |
+| "Google Drive is not configured" | Credentials not loaded (env var empty or init failed) | Set `GOOGLE_DRIVE_CREDENTIALS_JSON` or `GOOGLE_DRIVE_CREDENTIALS_BASE64` on Heroku. Check app startup logs for "Google Drive upload configured" or "credentials could not be loaded". |
+
+After changing config vars, redeploy or restart the dyno so the app picks them up.

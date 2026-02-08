@@ -1,5 +1,6 @@
 package com.realestate.service;
 
+import com.google.api.client.http.HttpResponseException;
 import com.google.api.client.http.InputStreamContent;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
@@ -102,26 +103,33 @@ public class GoogleDriveUploadService {
                 new ByteArrayInputStream(bytes));
         mediaContent.setLength((long) bytes.length);
 
-        File file = drive.files()
-                .create(fileMetadata, mediaContent)
-                .setFields("id")
-                .setSupportsAllDrives(true)
-                .execute();
+        try {
+            File file = drive.files()
+                    .create(fileMetadata, mediaContent)
+                    .setFields("id")
+                    .setSupportsAllDrives(true)
+                    .execute();
 
-        String fileId = file.getId();
-        if (fileId == null || fileId.isBlank()) {
-            throw new IOException("Drive API did not return file id");
+            String fileId = file.getId();
+            if (fileId == null || fileId.isBlank()) {
+                throw new IOException("Drive API did not return file id");
+            }
+
+            // Allow anyone with the link to view
+            Permission permission = new Permission();
+            permission.setType("anyone");
+            permission.setRole("reader");
+            drive.permissions().create(fileId, permission).setSupportsAllDrives(true).execute();
+
+            String publicUrl = PUBLIC_VIEW_URL_PREFIX + fileId;
+            log.debug("Uploaded to Drive: {} -> {}", filename, publicUrl);
+            return publicUrl;
+        } catch (HttpResponseException e) {
+            String detail = e.getStatusCode() + " " + (e.getStatusMessage() != null ? e.getStatusMessage() : "")
+                    + (e.getContent() != null ? ": " + e.getContent() : "");
+            log.error("Google Drive API error for {}: {}", filename, detail, e);
+            throw new IOException("Google Drive API error: " + detail, e);
         }
-
-        // Allow anyone with the link to view
-        Permission permission = new Permission();
-        permission.setType("anyone");
-        permission.setRole("reader");
-        drive.permissions().create(fileId, permission).setSupportsAllDrives(true).execute();
-
-        String publicUrl = PUBLIC_VIEW_URL_PREFIX + fileId;
-        log.debug("Uploaded to Drive: {} -> {}", filename, publicUrl);
-        return publicUrl;
     }
 
     private GoogleCredentials loadCredentials() throws IOException {
