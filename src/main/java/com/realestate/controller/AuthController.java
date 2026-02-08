@@ -40,6 +40,13 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
+    @GetMapping("/login")
+    @Operation(summary = "Login endpoint info (POST required)")
+    public ResponseEntity<Map<String, String>> loginGet() {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(Map.of("error", "Method Not Allowed", "message", "Use POST with JSON body: { \"email\", \"password\" }"));
+    }
+
     @PostMapping("/refresh")
     @Operation(summary = "Refresh token")
     public ResponseEntity<AuthResponse> refresh(@RequestBody MapWrapper body) {
