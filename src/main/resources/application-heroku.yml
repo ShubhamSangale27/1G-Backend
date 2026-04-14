@@ -51,6 +51,7 @@ app:
   msg91:
     authkey: ${MSG91_AUTHKEY:}
     sender: ${MSG91_SENDER:}
+    templateId: ${MSG91_TEMPLATE_ID:}
   stripe:
     api-key: ${STRIPE_API_KEY:}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:}

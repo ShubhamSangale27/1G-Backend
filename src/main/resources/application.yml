@@ -43,6 +43,8 @@ app:
     authkey: ${MSG91_AUTHKEY:}
     # Sender ID (optional, 6 chars). Default from MSG91 if not set.
     sender: ${MSG91_SENDER:}
+    # MSG91 OTP template id (required for send OTP API).
+    templateId: ${MSG91_TEMPLATE_ID:}
 
   # Stripe (payments)
   stripe:

@@ -8,7 +8,10 @@ import com.realestate.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -20,6 +23,7 @@ import org.springframework.web.client.RestTemplate;
 import java.net.URI;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 @Service
@@ -55,6 +59,9 @@ public class OtpService {
     @Value("${app.msg91.sender:}")
     private String msg91Sender;
 
+    @Value("${app.msg91.templateId:}")
+    private String msg91templateId;
+
     /** When set (e.g. 123456), use this OTP for mobile verification and skip MSG91 – for testing without DLT. */
     @Value("${app.otp.test-otp:}")
     private String testOtp;
@@ -64,7 +71,7 @@ public class OtpService {
     private boolean logOtp;
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String MSG91_SEND_OTP_URL = "https://api.msg91.com/api/sendotp.php";
+    private static final String MSG91_SEND_OTP_URL = "https://control.msg91.com/api/v5/otp";
 
     @Transactional
     public void sendEmailOtp(String email) {
@@ -174,19 +181,28 @@ public class OtpService {
             log.warn("MSG91 authkey not configured. Set MSG91_AUTHKEY or app.msg91.authkey. OTP for {} would be: {}", mobile, otp);
             return;
         }
+        if (msg91templateId == null || msg91templateId.isBlank()) {
+            log.warn("MSG91 templateId not configured. Set MSG91_TEMPLATE_ID or app.msg91.templateId. OTP for {} would be: {}", mobile, otp);
+            return;
+        }
         String mobileE164 = normalizeMobileE164(mobile);
         try {
             StringBuilder url = new StringBuilder(MSG91_SEND_OTP_URL)
                     .append("?authkey=").append(java.net.URLEncoder.encode(msg91Authkey, java.nio.charset.StandardCharsets.UTF_8))
                     .append("&mobile=").append(mobileE164)
-                    .append("&otp=").append(otp)
-                    .append("&otp_expiry=").append(expiryMinutes)
-                    .append("&otp_length=").append(otpLength);
-            if (msg91Sender != null && !msg91Sender.isBlank()) {
-                url.append("&sender=").append(java.net.URLEncoder.encode(msg91Sender, java.nio.charset.StandardCharsets.UTF_8));
-            }
+                    .append("&template_id=").append(java.net.URLEncoder.encode(msg91templateId, java.nio.charset.StandardCharsets.UTF_8));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(Map.of("OTP", otp), headers);
+
             RestTemplate rest = new RestTemplate();
-            ResponseEntity<String> response = rest.exchange(URI.create(url.toString()), HttpMethod.GET, null, String.class);
+            ResponseEntity<String> response = rest.exchange(
+                    URI.create(url.toString()),
+                    HttpMethod.POST,
+                    request,
+                    String.class
+            );
             int status = response.getStatusCode().value();
             String responseBody = response.getBody();
             if (response.getStatusCode().is2xxSuccessful()) {
