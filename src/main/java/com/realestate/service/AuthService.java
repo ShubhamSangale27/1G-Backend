@@ -56,6 +56,7 @@ public class AuthService {
 
     private static final int PENDING_SIGNUP_EXPIRY_MINUTES = 15;
     private static final int EMAIL_VERIFICATION_LINK_EXPIRY_HOURS = 24;
+    private static final int MAX_RESEND_ATTEMPTS_PER_DAY = 3;
 
     public AuthService(UserRepository userRepository, PendingSignupRepository pendingSignupRepository,
                        RefreshTokenRepository refreshTokenRepository, EmailVerificationTokenRepository emailVerificationTokenRepository,
@@ -102,11 +103,38 @@ public class AuthService {
                         .expiresAt(expiresAt)
                         .build());
         pending = pendingSignupRepository.save(pending);
-        otpService.sendMobileOtp(pending.getMobile());
+        OtpService.OtpSendResult otpSendResult = otpService.sendMobileOtp(pending.getMobile());
         return SignupResponse.builder()
                 .message("OTP sent to your mobile. Enter it on the next screen to complete registration.")
                 .email(pending.getEmail())
                 .mobile(pending.getMobile())
+                .resendAttemptsUsed(otpSendResult.resendAttemptsUsed())
+                .resendAttemptsRemaining(otpSendResult.resendAttemptsRemaining())
+                .resendAvailableAt(otpSendResult.resendAvailableAt())
+                .maxResendAttemptsPerDay(MAX_RESEND_ATTEMPTS_PER_DAY)
+                .build();
+    }
+
+    @Transactional
+    public SignupResponse resendSignupOtp(ResendSignupOtpRequest request) {
+        PendingSignup pending = pendingSignupRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new BadRequestException("No pending signup found. Please sign up again."));
+        if (pending.getExpiresAt().isBefore(Instant.now())) {
+            pendingSignupRepository.delete(pending);
+            throw new BadRequestException("Verification window expired. Please sign up again.");
+        }
+        if (!pending.getMobile().equals(request.getMobile())) {
+            throw new BadRequestException("Mobile does not match pending signup.");
+        }
+        OtpService.OtpSendResult otpSendResult = otpService.sendMobileOtp(request.getMobile());
+        return SignupResponse.builder()
+                .message("OTP resent successfully.")
+                .email(request.getEmail())
+                .mobile(request.getMobile())
+                .resendAttemptsUsed(otpSendResult.resendAttemptsUsed())
+                .resendAttemptsRemaining(otpSendResult.resendAttemptsRemaining())
+                .resendAvailableAt(otpSendResult.resendAvailableAt())
+                .maxResendAttemptsPerDay(MAX_RESEND_ATTEMPTS_PER_DAY)
                 .build();
     }
 

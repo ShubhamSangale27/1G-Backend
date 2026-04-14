@@ -22,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -29,6 +30,14 @@ import java.util.stream.IntStream;
 @Service
 @Slf4j
 public class OtpService {
+    public record OtpSendResult(
+            String identifier,
+            OtpVerification.OtpChannel channel,
+            Instant resendAvailableAt,
+            int resendAttemptsUsed,
+            int resendAttemptsRemaining,
+            Instant blockedUntil
+    ) {}
 
     private final OtpVerificationRepository otpRepository;
     private final UserRepository userRepository;
@@ -72,9 +81,12 @@ public class OtpService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String MSG91_SEND_OTP_URL = "https://control.msg91.com/api/v5/otp";
+    private static final int MAX_RESEND_ATTEMPTS_PER_DAY = 3;
+    private static final int RESEND_BASE_WAIT_MINUTES = 5;
 
     @Transactional
-    public void sendEmailOtp(String email) {
+    public OtpSendResult sendEmailOtp(String email) {
+        OtpSendResult policy = validateAndBuildResendPolicy(email, OtpVerification.OtpChannel.EMAIL);
         String otp = generateOtp();
         OtpVerification ov = OtpVerification.builder()
                 .identifier(email)
@@ -86,10 +98,12 @@ public class OtpService {
         otpRepository.save(ov);
         sendEmail(email, "Your verification OTP", "Your OTP is: " + otp + ". Valid for " + expiryMinutes + " minutes.");
         log.info("Email OTP sent to {}", email);
+        return policy;
     }
 
     @Transactional
-    public void sendMobileOtp(String mobile) {
+    public OtpSendResult sendMobileOtp(String mobile) {
+        OtpSendResult policy = validateAndBuildResendPolicy(mobile, OtpVerification.OtpChannel.MOBILE);
         String otp = (testOtp != null && !testOtp.isBlank()) ? testOtp.trim() : generateOtp();
         OtpVerification ov = OtpVerification.builder()
                 .identifier(mobile)
@@ -108,6 +122,7 @@ public class OtpService {
             sendSmsViaMsg91(mobile, otp);
             log.info("SMS OTP sent to {} via MSG91", mobile);
         }
+        return policy;
     }
 
     @Transactional
@@ -227,5 +242,37 @@ public class OtpService {
             return digits.isEmpty() ? mobile : digits;
         }
         return digits.isEmpty() ? mobile : digits;
+    }
+
+    private OtpSendResult validateAndBuildResendPolicy(String identifier, OtpVerification.OtpChannel channel) {
+        Instant now = Instant.now();
+        Instant lookbackStart = now.minus(Duration.ofHours(24));
+        long sendsInLast24Hours = otpRepository.countByIdentifierAndChannelAndCreatedAtAfter(identifier, channel, lookbackStart);
+
+        if (sendsInLast24Hours >= MAX_RESEND_ATTEMPTS_PER_DAY + 1L) {
+            Instant blockedUntil = otpRepository
+                    .findFirstByIdentifierAndChannelAndCreatedAtAfterOrderByCreatedAtAsc(identifier, channel, lookbackStart)
+                    .map(first -> first.getCreatedAt().plus(Duration.ofHours(24)))
+                    .orElse(now.plus(Duration.ofHours(24)));
+            long mins = Math.max(1, Duration.between(now, blockedUntil).toMinutes());
+            throw new BadRequestException("OTP resend limit reached. Please try again after " + mins + " minutes.");
+        }
+
+        if (sendsInLast24Hours > 0) {
+            OtpVerification last = otpRepository.findTopByIdentifierAndChannelOrderByCreatedAtDesc(identifier, channel).orElse(null);
+            if (last != null && last.getCreatedAt() != null) {
+                long cooldownMinutes = sendsInLast24Hours * RESEND_BASE_WAIT_MINUTES;
+                Instant nextAllowedAt = last.getCreatedAt().plus(Duration.ofMinutes(cooldownMinutes));
+                if (nextAllowedAt.isAfter(now)) {
+                    long mins = Math.max(1, Duration.between(now, nextAllowedAt).toMinutes());
+                    throw new BadRequestException("Please wait " + mins + " minutes before requesting OTP again.");
+                }
+            }
+        }
+
+        int usedAfterThisSend = (int) sendsInLast24Hours;
+        int remaining = Math.max(0, MAX_RESEND_ATTEMPTS_PER_DAY - usedAfterThisSend);
+        Instant resendAvailableAt = now.plus(Duration.ofMinutes((sendsInLast24Hours + 1) * RESEND_BASE_WAIT_MINUTES));
+        return new OtpSendResult(identifier, channel, resendAvailableAt, usedAfterThisSend, remaining, null);
     }
 }

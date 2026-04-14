@@ -15,4 +15,8 @@ public class SignupResponse {
     private String message;
     private String email;
     private String mobile;
+    private Integer resendAttemptsUsed;
+    private Integer resendAttemptsRemaining;
+    private java.time.Instant resendAvailableAt;
+    private Integer maxResendAttemptsPerDay;
 }

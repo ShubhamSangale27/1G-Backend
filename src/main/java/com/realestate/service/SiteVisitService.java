@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -52,6 +53,8 @@ public class SiteVisitService {
     private int otpLength;
 
     private static final int VISIT_OTP_EXPIRY_MINUTES = 60 * 24;
+    private static final int VISIT_MAX_RESEND_ATTEMPTS_PER_DAY = 3;
+    private static final int VISIT_RESEND_BASE_WAIT_MINUTES = 5;
 
     @Transactional
     public SiteVisitDto book(SiteVisitRequest request, UserPrincipal principal) {
@@ -60,7 +63,7 @@ public class SiteVisitService {
         User user = userService.getById(principal.getId());
         List<SiteVisit.SiteVisitStatus> active = List.of(SiteVisit.SiteVisitStatus.PENDING_ASSIGNMENT, SiteVisit.SiteVisitStatus.ASSIGNED);
         if (siteVisitRepository.findFirstByUserIdAndPropertyIdAndStatusInOrderByCreatedAtDesc(principal.getId(), request.getPropertyId(), active).isPresent()) {
-            throw new BadRequestException("You already have an active site visit request for this property. Please reschedule or wait for it to complete.");
+            throw new BadRequestException("You already have a site visit request for this property that is not closed yet.");
         }
         SiteVisit sv = SiteVisit.builder()
                 .user(user)
@@ -120,17 +123,23 @@ public class SiteVisitService {
         if (agent.getRole() != User.Role.AGENT && agent.getRole() != User.Role.ADMIN) {
             throw new BadRequestException("User is not an agent");
         }
-        visitOTPRepository.findBySiteVisitId(sv.getId()).ifPresent(visitOTPRepository::delete);
         sv.setAgent(agent);
         sv.setStatus(SiteVisit.SiteVisitStatus.ASSIGNED);
         siteVisitRepository.save(sv);
+
         String otpCode = generateOtp();
-        VisitOTP votp = VisitOTP.builder()
-                .siteVisit(sv)
-                .otpCode(otpCode)
-                .expiresAt(Instant.now().plusSeconds(VISIT_OTP_EXPIRY_MINUTES * 60L))
-                .used(false)
-                .build();
+        Instant now = Instant.now();
+        VisitOTP votp = visitOTPRepository.findBySiteVisitId(sv.getId())
+                .map(existing -> applyVisitOtpResendPolicy(existing, otpCode, now))
+                .orElseGet(() -> VisitOTP.builder()
+                        .siteVisit(sv)
+                        .otpCode(otpCode)
+                        .expiresAt(now.plusSeconds(VISIT_OTP_EXPIRY_MINUTES * 60L))
+                        .used(false)
+                        .resendCount(0)
+                        .firstSentAt(now)
+                        .lastSentAt(now)
+                        .build());
         visitOTPRepository.save(votp);
         alertService.create(sv.getUser().getId(), "Agent Assigned", "Your site visit has been assigned. OTP: " + otpCode, "SITE_VISIT", sv.getId());
         alertService.create(agent.getId(), "Site Visit Assigned", "You have been assigned: " + sv.getProperty().getTitle() + " on " + sv.getScheduledAt(), "SITE_VISIT", sv.getId());
@@ -312,5 +321,39 @@ public class SiteVisitService {
         StringBuilder sb = new StringBuilder(otpLength);
         IntStream.range(0, otpLength).forEach(i -> sb.append(r.nextInt(10)));
         return sb.toString();
+    }
+
+    private VisitOTP applyVisitOtpResendPolicy(VisitOTP existing, String newOtpCode, Instant now) {
+        Instant firstSentAt = existing.getFirstSentAt() != null ? existing.getFirstSentAt() : existing.getCreatedAt();
+        Instant lastSentAt = existing.getLastSentAt() != null ? existing.getLastSentAt() : existing.getCreatedAt();
+        int resendCount = Math.max(0, existing.getResendCount());
+
+        if (firstSentAt != null && firstSentAt.plus(Duration.ofHours(24)).isBefore(now)) {
+            firstSentAt = now;
+            lastSentAt = now;
+            resendCount = 0;
+        } else {
+            long cooldownMins = (long) (resendCount + 1) * VISIT_RESEND_BASE_WAIT_MINUTES;
+            Instant nextAllowedAt = lastSentAt.plus(Duration.ofMinutes(cooldownMins));
+            if (nextAllowedAt.isAfter(now)) {
+                long waitMins = Math.max(1, Duration.between(now, nextAllowedAt).toMinutes());
+                throw new BadRequestException("Visit OTP can be resent after " + waitMins + " minutes.");
+            }
+            if (resendCount >= VISIT_MAX_RESEND_ATTEMPTS_PER_DAY) {
+                Instant blockedUntil = firstSentAt.plus(Duration.ofHours(24));
+                long waitMins = Math.max(1, Duration.between(now, blockedUntil).toMinutes());
+                throw new BadRequestException("Visit OTP resend limit reached. Please try again after " + waitMins + " minutes.");
+            }
+            resendCount++;
+            lastSentAt = now;
+        }
+
+        existing.setOtpCode(newOtpCode);
+        existing.setExpiresAt(now.plusSeconds(VISIT_OTP_EXPIRY_MINUTES * 60L));
+        existing.setUsed(false);
+        existing.setFirstSentAt(firstSentAt);
+        existing.setLastSentAt(lastSentAt);
+        existing.setResendCount(resendCount);
+        return existing;
     }
 }

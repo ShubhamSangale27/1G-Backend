@@ -34,6 +34,12 @@ public class AuthController {
         return ResponseEntity.ok(authService.verifySignup(request));
     }
 
+    @PostMapping("/resend-signup-otp")
+    @Operation(summary = "Resend signup OTP with throttling limits")
+    public ResponseEntity<SignupResponse> resendSignupOtp(@Valid @RequestBody ResendSignupOtpRequest request) {
+        return ResponseEntity.ok(authService.resendSignupOtp(request));
+    }
+
     @PostMapping("/login")
     @Operation(summary = "Login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
