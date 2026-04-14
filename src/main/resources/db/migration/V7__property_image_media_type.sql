@@ -1,0 +1,2 @@
+ALTER TABLE property_images
+    ADD COLUMN IF NOT EXISTS media_type VARCHAR(20) NOT NULL DEFAULT 'IMAGE';

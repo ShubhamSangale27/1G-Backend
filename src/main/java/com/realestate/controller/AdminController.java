@@ -155,4 +155,26 @@ public class AdminController {
                                                         @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(siteVisitService.reassignAgent(id, agentId, principal));
     }
+
+    @GetMapping("/users")
+    @Operation(summary = "List all users")
+    public ResponseEntity<List<UserDto>> getAllUsers() {
+        return ResponseEntity.ok(adminService.getAllUsers());
+    }
+
+    @PutMapping("/users/{id}/status")
+    @Operation(summary = "Activate or suspend a user account")
+    public ResponseEntity<UserDto> setUserStatus(@PathVariable Long id,
+                                                 @RequestParam boolean active,
+                                                 @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(adminService.setUserActive(id, active, principal));
+    }
+
+    @DeleteMapping("/users/{id}")
+    @Operation(summary = "Delete a user and related data")
+    public ResponseEntity<Map<String, Boolean>> deleteUser(@PathVariable Long id,
+                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        adminService.deleteUser(id, principal);
+        return ResponseEntity.ok(Map.of("deleted", true));
+    }
 }

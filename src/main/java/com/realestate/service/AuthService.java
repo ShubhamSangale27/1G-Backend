@@ -144,7 +144,7 @@ public class AuthService {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadRequestException("Invalid email or password"));
         if (!user.isActive()) {
-            throw new BadRequestException("Account is deactivated");
+            throw new BadRequestException("Suspended user: your account has been deactivated. Please contact admin.");
         }
         if (!user.isMobileVerified()) {
             throw new BadRequestException("Please verify your mobile number before logging in");

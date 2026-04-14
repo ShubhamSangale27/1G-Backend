@@ -23,9 +23,19 @@ public class PropertyImage {
     @Column(nullable = false)
     private String imageUrl;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private MediaType mediaType = MediaType.IMAGE;
+
     private String caption;
 
     @Column(nullable = false)
     @Builder.Default
     private Integer displayOrder = 0;
+
+    public enum MediaType {
+        IMAGE,
+        VIDEO
+    }
 }
