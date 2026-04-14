@@ -8,10 +8,13 @@ import com.realestate.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
@@ -183,8 +186,17 @@ public class OtpService {
                 url.append("&sender=").append(java.net.URLEncoder.encode(msg91Sender, java.nio.charset.StandardCharsets.UTF_8));
             }
             RestTemplate rest = new RestTemplate();
-            String response = rest.getForObject(URI.create(url.toString()), String.class);
-            log.debug("MSG91 send OTP response: {}", response);
+            ResponseEntity<String> response = rest.exchange(URI.create(url.toString()), HttpMethod.GET, null, String.class);
+            int status = response.getStatusCode().value();
+            String responseBody = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("MSG91 send OTP success for {}. status={}, response={}", mobile, status, responseBody);
+            } else {
+                log.error("MSG91 send OTP non-success for {}. status={}, response={}", mobile, status, responseBody);
+            }
+        } catch (HttpStatusCodeException e) {
+            log.error("MSG91 send OTP HTTP error for {}. status={}, response={}",
+                    mobile, e.getStatusCode().value(), e.getResponseBodyAsString());
         } catch (Exception e) {
             log.error("MSG91 send OTP failed for {}: {}", mobile, e.getMessage());
         }
