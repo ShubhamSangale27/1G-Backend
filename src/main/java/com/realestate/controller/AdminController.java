@@ -170,6 +170,14 @@ public class AdminController {
         return ResponseEntity.ok(adminService.setUserActive(id, active, principal));
     }
 
+    @PutMapping("/users/{id}/role")
+    @Operation(summary = "Change user role between ADMIN and AGENT")
+    public ResponseEntity<UserDto> setUserRole(@PathVariable Long id,
+                                               @RequestParam com.realestate.entity.User.Role role,
+                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(adminService.setUserRole(id, role, principal));
+    }
+
     @DeleteMapping("/users/{id}")
     @Operation(summary = "Delete a user and related data")
     public ResponseEntity<Map<String, Boolean>> deleteUser(@PathVariable Long id,

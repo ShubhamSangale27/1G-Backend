@@ -141,6 +141,19 @@ public class AdminService {
     }
 
     @Transactional
+    public UserDto setUserRole(Long userId, User.Role role, UserPrincipal principal) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        if (role != User.Role.ADMIN && role != User.Role.AGENT) {
+            throw new BadRequestException("Role can only be ADMIN or AGENT.");
+        }
+        if (user.getId().equals(principal.getId()) && role != User.Role.ADMIN) {
+            throw new BadRequestException("You cannot change your own role from ADMIN.");
+        }
+        user.setRole(role);
+        return UserDto.from(userRepository.save(user));
+    }
+
+    @Transactional
     public void deleteUser(Long userId, UserPrincipal principal) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
         if (user.getId().equals(principal.getId())) {
