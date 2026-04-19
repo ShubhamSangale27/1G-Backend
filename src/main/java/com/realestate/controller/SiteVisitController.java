@@ -45,9 +45,10 @@ public class SiteVisitController {
     @Operation(summary = "My active site visit for this property (if any)")
     public ResponseEntity<SiteVisitDto> getMyVisitForProperty(@PathVariable Long propertyId,
                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        // 204 when none — avoids browser "404 Not Found" noise for the normal "no active visit" case.
         return siteVisitService.getMyVisitForProperty(principal.getId(), propertyId)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElse(ResponseEntity.noContent().build());
     }
 
     @PostMapping("/{id}/verify")
