@@ -78,7 +78,9 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 origin,
                 "http://localhost:4200",
-                "http://127.0.0.1:4200"
+                "http://127.0.0.1:4200",
+                "https://www.1guntha.com",
+                "http://www.1guntha.com"
         ));
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
