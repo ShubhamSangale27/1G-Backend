@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-@CrossOrigin(origins = {"http://www.1guntha.com", "https://www.1guntha.com"})
+
 @RestController
 @RequestMapping("/uploads")
 public class UploadedFileController {

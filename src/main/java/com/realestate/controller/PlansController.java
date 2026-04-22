@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@CrossOrigin(origins = {"http://www.1guntha.com", "https://www.1guntha.com"})
+
 @RestController
 @RequestMapping("/plans")
 @RequiredArgsConstructor
