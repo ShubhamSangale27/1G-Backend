@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+@CrossOrigin(origins = {"http://www.1guntha.com", "https://www.1guntha.com"})
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor

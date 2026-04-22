@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+@CrossOrigin(origins = {"http://www.1guntha.com", "https://www.1guntha.com"})
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
