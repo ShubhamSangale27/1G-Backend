@@ -3,6 +3,7 @@ package com.realestate.controller;
 import com.realestate.dto.PageResponse;
 import com.realestate.dto.SiteVisitDto;
 import com.realestate.dto.SiteVisitRequest;
+import com.realestate.dto.VisitOtpResponse;
 import com.realestate.security.UserPrincipal;
 import com.realestate.service.SiteVisitService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -52,14 +53,6 @@ public class SiteVisitController {
                 .orElse(ResponseEntity.noContent().build());
     }
 
-    @PostMapping("/{id}/verify")
-    @Operation(summary = "Verify OTP and complete visit (agent)")
-    public ResponseEntity<SiteVisitDto> verifyAndComplete(@PathVariable Long id,
-                                                          @RequestParam String otp,
-                                                          @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(siteVisitService.verifyAndComplete(id, otp, principal));
-    }
-
     @PutMapping("/{id}/reschedule")
     @Operation(summary = "Reschedule site visit (OTP unchanged)")
     public ResponseEntity<SiteVisitDto> reschedule(@PathVariable Long id,
@@ -71,5 +64,19 @@ public class SiteVisitController {
         }
         java.time.Instant scheduledAt = java.time.Instant.parse(scheduledAtStr);
         return ResponseEntity.ok(siteVisitService.reschedule(id, scheduledAt, principal));
+    }
+
+    @GetMapping("/{id}/otp")
+    @Operation(summary = "Get visit OTP for assigned visit (visit owner only)")
+    public ResponseEntity<VisitOtpResponse> getVisitOtp(@PathVariable Long id,
+                                                        @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(siteVisitService.getVisitOtpForUser(id, principal));
+    }
+
+    @PostMapping("/{id}/resend-otp")
+    @Operation(summary = "Resend visit OTP via SMS (visit owner only)")
+    public ResponseEntity<VisitOtpResponse> resendVisitOtp(@PathVariable Long id,
+                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(siteVisitService.resendVisitOtpForUser(id, principal));
     }
 }

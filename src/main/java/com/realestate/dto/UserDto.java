@@ -22,6 +22,7 @@ public class UserDto {
     private boolean emailVerified;
     private boolean mobileVerified;
     private boolean active;
+    private String profileImageUrl;
     private Instant createdAt;
 
     public static UserDto from(User u) {
@@ -35,6 +36,7 @@ public class UserDto {
                 .emailVerified(u.isEmailVerified())
                 .mobileVerified(u.isMobileVerified())
                 .active(u.isActive())
+                .profileImageUrl(u.getProfileImageUrl())
                 .createdAt(u.getCreatedAt())
                 .build();
     }

@@ -71,6 +71,39 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/forgot-password")
+    @Operation(summary = "Send OTP to registered mobile for password reset")
+    public ResponseEntity<PasswordOtpResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        return ResponseEntity.ok(authService.forgotPassword(request));
+    }
+
+    @PostMapping("/reset-password")
+    @Operation(summary = "Reset password with OTP sent to registered mobile")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully. You can now log in."));
+    }
+
+    @PostMapping("/change-password/send-otp")
+    @Operation(summary = "Send OTP to change password (authenticated)")
+    public ResponseEntity<PasswordOtpResponse> sendChangePasswordOtp(@AuthenticationPrincipal UserPrincipal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(authService.sendChangePasswordOtp(principal));
+    }
+
+    @PostMapping("/change-password")
+    @Operation(summary = "Change password with OTP (authenticated)")
+    public ResponseEntity<Map<String, String>> changePassword(@AuthenticationPrincipal UserPrincipal principal,
+                                                               @Valid @RequestBody ChangePasswordRequest request) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        authService.changePassword(principal, request);
+        return ResponseEntity.ok(Map.of("message", "Password changed successfully. Please log in again."));
+    }
+
     @PostMapping("/send-email-verification")
     @Operation(summary = "Send email verification link to current user's email (authenticated)")
     public ResponseEntity<Void> sendEmailVerification(@AuthenticationPrincipal UserPrincipal principal) {

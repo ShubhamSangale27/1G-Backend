@@ -101,6 +101,22 @@ public class OtpService {
         return policy;
     }
 
+    /** Send site-visit completion OTP via SMS (uses same MSG91 template as signup OTP). */
+    public void sendVisitCompletionOtp(String mobile, String otpCode) {
+        if (mobile == null || mobile.isBlank()) {
+            log.warn("Cannot send visit OTP SMS — no mobile on file");
+            return;
+        }
+        if (logOtp) {
+            log.info("Site visit OTP for mobile {}: {} (check logs or use test OTP in dev)", mobile, otpCode);
+        }
+        if (testOtp != null && !testOtp.isBlank()) {
+            log.info("Test OTP mode: site visit OTP for {} is {}", mobile, otpCode);
+            return;
+        }
+        sendSmsViaMsg91(mobile, otpCode);
+    }
+
     @Transactional
     public OtpSendResult sendMobileOtp(String mobile) {
         OtpSendResult policy = validateAndBuildResendPolicy(mobile, OtpVerification.OtpChannel.MOBILE);
@@ -142,6 +158,21 @@ public class OtpService {
             userRepository.save(user);
         });
         return true;
+    }
+
+    /** Verify OTP without updating user verification flags (e.g. password reset). */
+    @Transactional
+    public void verifyOtpCode(String identifier, OtpVerification.OtpChannel channel, String otp) {
+        OtpVerification ov = otpRepository.findTopByIdentifierAndChannelOrderByCreatedAtDesc(identifier, channel)
+                .orElseThrow(() -> new BadRequestException("No OTP found"));
+        if (ov.getExpiresAt().isBefore(Instant.now())) {
+            throw new BadRequestException("OTP expired");
+        }
+        if (!ov.getOtpCode().equals(otp)) {
+            throw new BadRequestException("Invalid OTP");
+        }
+        ov.setVerified(true);
+        otpRepository.save(ov);
     }
 
     @Transactional

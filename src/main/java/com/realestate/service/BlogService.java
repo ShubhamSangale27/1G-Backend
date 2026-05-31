@@ -103,7 +103,10 @@ public class BlogService {
                 .orElseThrow(() -> new ResourceNotFoundException("Blog post", id));
         requireEditorAccess(post, principal);
         post.setTitle(request.getTitle().trim());
-        post.setSlug(generateUniqueSlug(request.getTitle(), post.getId()));
+        // Keep slug stable after publish so shared links keep working.
+        if (post.getSlug() == null || post.getSlug().isBlank()) {
+            post.setSlug(generateUniqueSlug(request.getTitle(), post.getId()));
+        }
         post.setExcerpt(trimToNull(request.getExcerpt()));
         post.setCoverImageUrl(trimToNull(request.getCoverImageUrl()));
         post.setMetaTitle(trimToNull(request.getMetaTitle()));

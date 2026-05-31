@@ -7,6 +7,7 @@ import com.realestate.dto.SiteVisitCommentDto;
 import com.realestate.dto.SiteVisitDetailDto;
 import com.realestate.dto.SiteVisitDto;
 import com.realestate.dto.SiteVisitRequest;
+import com.realestate.dto.VisitOtpResponse;
 import com.realestate.entity.*;
 import com.realestate.exception.BadRequestException;
 import com.realestate.exception.ResourceNotFoundException;
@@ -48,6 +49,7 @@ public class SiteVisitService {
     private final PropertyRepository propertyRepository;
     private final UserService userService;
     private final AlertService alertService;
+    private final OtpService otpService;
 
     @Value("${app.otp.length:6}")
     private int otpLength;
@@ -73,7 +75,9 @@ public class SiteVisitService {
                 .status(SiteVisit.SiteVisitStatus.PENDING_ASSIGNMENT)
                 .build();
         sv = siteVisitRepository.save(sv);
-        alertService.create(principal.getId(), "Site Visit Booked", "Your site visit request has been submitted.", "SITE_VISIT", sv.getId());
+        alertService.create(principal.getId(), "Site Visit Booked",
+                "Your visit request is submitted. An admin will assign an agent — you'll receive an OTP via SMS when assigned.",
+                "SITE_VISIT", sv.getId());
         return SiteVisitDto.from(siteVisitRepository.findById(sv.getId()).orElseThrow());
     }
 
@@ -141,8 +145,16 @@ public class SiteVisitService {
                         .lastSentAt(now)
                         .build());
         visitOTPRepository.save(votp);
-        alertService.create(sv.getUser().getId(), "Agent Assigned", "Your site visit has been assigned. OTP: " + otpCode, "SITE_VISIT", sv.getId());
-        alertService.create(agent.getId(), "Site Visit Assigned", "You have been assigned: " + sv.getProperty().getTitle() + " on " + sv.getScheduledAt(), "SITE_VISIT", sv.getId());
+        alertService.create(sv.getUser().getId(), "Agent Assigned",
+                "Your visit has been assigned. Your completion OTP was sent to your registered mobile — share it with the agent only in person at the end of the visit.",
+                "SITE_VISIT", sv.getId());
+        alertService.create(agent.getId(), "Site Visit Assigned",
+                "Assigned: " + sv.getProperty().getTitle() + " on " + sv.getScheduledAt()
+                        + ". Ask the customer to share their visit OTP verbally when the visit is complete.",
+                "SITE_VISIT", sv.getId());
+        if (sv.getUser().getMobile() != null && !sv.getUser().getMobile().isBlank()) {
+            otpService.sendVisitCompletionOtp(sv.getUser().getMobile(), otpCode);
+        }
         return SiteVisitDto.from(siteVisitRepository.findById(sv.getId()).orElseThrow());
     }
 
@@ -171,6 +183,57 @@ public class SiteVisitService {
         siteVisitRepository.save(sv);
         alertService.create(sv.getUser().getId(), "Site Visit Completed", "Your site visit has been marked completed.", "SITE_VISIT", sv.getId());
         return SiteVisitDto.from(sv);
+    }
+
+    public VisitOtpResponse getVisitOtpForUser(Long visitId, UserPrincipal principal) {
+        SiteVisit sv = siteVisitRepository.findById(visitId).orElseThrow(() -> new ResourceNotFoundException("SiteVisit", visitId));
+        if (!sv.getUser().getId().equals(principal.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Only the customer who booked this visit can view the OTP");
+        }
+        if (sv.getStatus() != SiteVisit.SiteVisitStatus.ASSIGNED) {
+            throw new BadRequestException("OTP is available only for assigned visits");
+        }
+        VisitOTP votp = visitOTPRepository.findBySiteVisitId(visitId)
+                .orElseThrow(() -> new BadRequestException("OTP not generated yet. Please wait for agent assignment."));
+        if (votp.isUsed()) {
+            throw new BadRequestException("OTP already used");
+        }
+        if (votp.getExpiresAt().isBefore(Instant.now())) {
+            throw new BadRequestException("OTP expired. Use resend to get a new one.");
+        }
+        return VisitOtpResponse.builder()
+                .otp(votp.getOtpCode())
+                .expiresAt(votp.getExpiresAt())
+                .message("Share this OTP with the agent at the end of your visit.")
+                .build();
+    }
+
+    @Transactional
+    public VisitOtpResponse resendVisitOtpForUser(Long visitId, UserPrincipal principal) {
+        SiteVisit sv = siteVisitRepository.findById(visitId).orElseThrow(() -> new ResourceNotFoundException("SiteVisit", visitId));
+        if (!sv.getUser().getId().equals(principal.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Only the customer who booked this visit can resend the OTP");
+        }
+        if (sv.getStatus() != SiteVisit.SiteVisitStatus.ASSIGNED) {
+            throw new BadRequestException("OTP can be resent only for assigned visits");
+        }
+        String otpCode = generateOtp();
+        Instant now = Instant.now();
+        VisitOTP votp = visitOTPRepository.findBySiteVisitId(visitId)
+                .map(existing -> applyVisitOtpResendPolicy(existing, otpCode, now))
+                .orElseThrow(() -> new BadRequestException("OTP not generated yet"));
+        visitOTPRepository.save(votp);
+        if (sv.getUser().getMobile() != null && !sv.getUser().getMobile().isBlank()) {
+            otpService.sendVisitCompletionOtp(sv.getUser().getMobile(), otpCode);
+        }
+        alertService.create(sv.getUser().getId(), "Visit OTP Resent",
+                "A new completion OTP was sent to your registered mobile. Share it with the agent only in person when the visit is complete.",
+                "SITE_VISIT", sv.getId());
+        return VisitOtpResponse.builder()
+                .otp(otpCode)
+                .expiresAt(votp.getExpiresAt())
+                .message("OTP resent to your registered mobile and shown here.")
+                .build();
     }
 
     @Transactional
@@ -234,7 +297,8 @@ public class SiteVisitService {
         Instant endToday = endOfToday.toInstant();
         long dueTodayCount = siteVisitRepository.countDueTodayForAgent(agentId, startToday, endToday);
         Pageable pageable = PageRequest.of(page, size);
-        Page<SiteVisit> result = siteVisitRepository.findByAgentIdDueTodayFirst(agentId, startToday, endToday, pageable);
+        Instant now = Instant.now();
+        Page<SiteVisit> result = siteVisitRepository.findByAgentIdUpcomingFirst(agentId, now, pageable);
         List<SiteVisitDto> content = result.getContent().stream().map(SiteVisitDto::from).collect(Collectors.toList());
         return AgentAssignedVisitsResponse.builder()
                 .content(content)

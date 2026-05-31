@@ -40,6 +40,7 @@ public class SecurityConfig {
             "/auth/verify-email",
             "/auth/refresh",
             "/auth/forgot-password",
+            "/auth/reset-password",
             "/otp/send",
             "/otp/verify",
             "/properties/public/**",

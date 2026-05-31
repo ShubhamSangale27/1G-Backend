@@ -51,6 +51,9 @@ public class User {
     @Builder.Default
     private boolean active = true;
 
+    @Column(name = "profile_image_url", length = 1000)
+    private String profileImageUrl;
+
     @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private Set<Property> properties = new HashSet<>();

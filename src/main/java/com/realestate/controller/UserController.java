@@ -1,17 +1,17 @@
 package com.realestate.controller;
 
+import com.realestate.dto.ProfileUpdateRequest;
 import com.realestate.dto.UserDto;
 import com.realestate.security.UserPrincipal;
 import com.realestate.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 
 @RestController
@@ -29,13 +29,10 @@ public class UserController {
         return ResponseEntity.ok(userService.getProfile(principal.getId()));
     }
 
-    @PutMapping("/{id}")
-    @Operation(summary = "Update profile")
-    public ResponseEntity<UserDto> updateProfile(@PathVariable Long id,
-                                                  @RequestBody Map<String, String> body,
-                                                  @AuthenticationPrincipal UserPrincipal principal) {
-        String fullName = body.get("fullName");
-        String mobile = body.get("mobile");
-        return ResponseEntity.ok(userService.updateProfile(id, fullName, mobile, principal));
+    @PutMapping("/me")
+    @Operation(summary = "Update current user profile (email and picture editable; mobile is read-only)")
+    public ResponseEntity<UserDto> updateMyProfile(@Valid @RequestBody ProfileUpdateRequest request,
+                                                   @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(userService.updateProfile(principal.getId(), request, principal));
     }
 }
