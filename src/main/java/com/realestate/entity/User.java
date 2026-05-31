@@ -78,6 +78,6 @@ public class User {
     private Instant updatedAt;
 
     public enum Role {
-        USER, ADMIN, AGENT
+        USER, ADMIN, AGENT, BLOG
     }
 }

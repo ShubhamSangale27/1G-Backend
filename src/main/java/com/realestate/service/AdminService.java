@@ -143,8 +143,8 @@ public class AdminService {
     @Transactional
     public UserDto setUserRole(Long userId, User.Role role, UserPrincipal principal) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
-        if (role != User.Role.ADMIN && role != User.Role.AGENT) {
-            throw new BadRequestException("Role can only be ADMIN or AGENT.");
+        if (role != User.Role.ADMIN && role != User.Role.AGENT && role != User.Role.BLOG && role != User.Role.USER) {
+            throw new BadRequestException("Role must be one of ADMIN, AGENT, BLOG, USER.");
         }
         if (user.getId().equals(principal.getId()) && role != User.Role.ADMIN) {
             throw new BadRequestException("You cannot change your own role from ADMIN.");

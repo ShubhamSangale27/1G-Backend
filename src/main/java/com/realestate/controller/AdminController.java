@@ -172,7 +172,7 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/role")
-    @Operation(summary = "Change user role between ADMIN and AGENT")
+    @Operation(summary = "Change user role (ADMIN, AGENT, BLOG, USER)")
     public ResponseEntity<UserDto> setUserRole(@PathVariable Long id,
                                                @RequestParam com.realestate.entity.User.Role role,
                                                @AuthenticationPrincipal UserPrincipal principal) {

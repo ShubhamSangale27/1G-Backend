@@ -76,5 +76,19 @@ public class DataLoader implements CommandLineRunner {
             userRepository.save(user);
             log.info("Created test user: user@realestate.com / user123");
         }
+        if (userRepository.findByEmail("blogger@realestate.com").isEmpty()) {
+            User blogger = User.builder()
+                    .email("blogger@realestate.com")
+                    .passwordHash(passwordEncoder.encode("blog123"))
+                    .fullName("Blog Editor")
+                    .mobile("+919876543214")
+                    .role(User.Role.BLOG)
+                    .emailVerified(true)
+                    .mobileVerified(true)
+                    .active(true)
+                    .build();
+            userRepository.save(blogger);
+            log.info("Created blog editor: blogger@realestate.com / blog123");
+        }
     }
 }

@@ -44,6 +44,7 @@ public class SecurityConfig {
             "/otp/verify",
             "/properties/public/**",
             "/properties/search",
+            "/blogs/published/**",
             "/uploads/**",
             "/plans",
             "/v3/api-docs/**",
@@ -65,6 +66,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/properties/{id}").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/agent/**").hasAnyRole("AGENT", "ADMIN")
+                        .requestMatchers("/blogs/editor/**").hasAnyRole("BLOG", "ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
