@@ -22,7 +22,7 @@ public class SecurityBeans {
     @Bean
     public UserDetailsService userDetailsService() {
         return email -> {
-            var user = userRepository.findByEmail(email)
+            var user = userRepository.findByEmailIgnoreCase(email.trim())
                     .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
             return new org.springframework.security.core.userdetails.User(
                     user.getEmail(),

@@ -29,7 +29,8 @@ public class ImageUploadService {
             "image/jpeg", "image/png", "image/webp", "image/gif",
             "video/mp4", "video/webm", "video/ogg", "video/quicktime"
     );
-    private static final long MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+    private static final long MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+    private static final long MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
     private static final int MAX_WIDTH = 1200;
     private static final int MAX_HEIGHT = 1200;
     private static final int THUMB_WIDTH = 300;
@@ -46,11 +47,14 @@ public class ImageUploadService {
             throw new BadRequestException("No file provided");
         }
         String contentType = file.getContentType();
-        if (contentType == null || !ALLOWED_TYPES.contains(contentType.toLowerCase())) {
-            throw new BadRequestException("Invalid image type. Allowed: JPEG, PNG, WebP, GIF");
+        if (contentType == null || !ALLOWED_TYPES.contains(contentType.toLowerCase().split(";")[0].trim())) {
+            throw new BadRequestException("Invalid file type. Allowed images: JPEG, PNG, WebP, GIF; videos: MP4, WebM, OGG, MOV");
         }
-        if (file.getSize() > MAX_SIZE_BYTES) {
-            throw new BadRequestException("File too large. Max 10 MB");
+        long maxSize = isVideo(contentType) ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
+        if (file.getSize() > maxSize) {
+            throw new BadRequestException(isVideo(contentType)
+                    ? "Video too large. Max 50 MB"
+                    : "Image too large. Max 10 MB");
         }
         try {
             String ext = getExtension(contentType);

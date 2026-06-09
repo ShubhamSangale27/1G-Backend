@@ -170,7 +170,7 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmailIgnoreCase(normalizeEmail(request.getEmail()))
                 .orElseThrow(() -> new BadRequestException("Invalid email or password"));
         if (!user.isActive()) {
             throw new BadRequestException("Suspended user: your account has been deactivated. Please contact admin.");
@@ -178,10 +178,9 @@ public class AuthService {
         if (!user.isMobileVerified()) {
             throw new BadRequestException("Please verify your mobile number before logging in");
         }
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(user.getEmail(), request.getPassword())
         );
-        user = userRepository.findByEmail(request.getEmail()).orElseThrow();
         return buildAuthResponse(user);
     }
 
@@ -233,7 +232,7 @@ public class AuthService {
     /** Request password reset OTP sent to the user's registered mobile. */
     @Transactional
     public PasswordOtpResponse forgotPassword(ForgotPasswordRequest request) {
-        Optional<User> userOpt = userRepository.findByEmail(request.getEmail().trim().toLowerCase());
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(normalizeEmail(request.getEmail()));
         if (userOpt.isEmpty()) {
             return PasswordOtpResponse.builder()
                     .message("If an account exists for this email, an OTP has been sent to the registered mobile number.")
@@ -256,14 +255,13 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
-        User user = userRepository.findByEmail(request.getEmail().trim().toLowerCase())
+        User user = userRepository.findByEmailIgnoreCase(normalizeEmail(request.getEmail()))
                 .orElseThrow(() -> new BadRequestException("Invalid email or OTP"));
         if (user.getMobile() == null || user.getMobile().isBlank()) {
             throw new BadRequestException("Cannot reset password for this account");
         }
         otpService.verifyOtpCode(user.getMobile(), OtpVerification.OtpChannel.MOBILE, request.getOtp());
-        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
-        userRepository.save(user);
+        updatePasswordHash(user, request.getNewPassword());
         refreshTokenRepository.deleteByUserId(user.getId());
     }
 
@@ -294,9 +292,21 @@ public class AuthService {
             throw new BadRequestException("No mobile number on file");
         }
         otpService.verifyOtpCode(user.getMobile(), OtpVerification.OtpChannel.MOBILE, request.getOtp());
-        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
-        userRepository.save(user);
+        updatePasswordHash(user, request.getNewPassword());
         refreshTokenRepository.deleteByUserId(user.getId());
+    }
+
+    private void updatePasswordHash(User user, String rawPassword) {
+        String encoded = passwordEncoder.encode(rawPassword);
+        user.setPasswordHash(encoded);
+        userRepository.saveAndFlush(user);
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            throw new BadRequestException("Password could not be updated. Please try again.");
+        }
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
     }
 
     /** Send email verification link to the current user's email. User can verify later via the link. */
