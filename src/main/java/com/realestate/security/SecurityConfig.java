@@ -45,6 +45,7 @@ public class SecurityConfig {
             "/otp/verify",
             "/properties/public/**",
             "/properties/search",
+            "/carousel/**",
             "/blogs/published/**",
             "/uploads/**",
             "/plans",

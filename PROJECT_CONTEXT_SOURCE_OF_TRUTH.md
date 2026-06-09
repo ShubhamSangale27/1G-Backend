@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-05-31 (blog UI + site visit OTP session)
+Last updated: 2026-06-09 (admin-configurable homepage carousel)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
 
@@ -8,16 +8,26 @@ This is the canonical context document for this workspace. It merges the most re
 
 ## Mandatory Maintenance Rule
 
-After every meaningful change in this project (feature, fix, config, infra, deployment, or behavior update), update this file in the same session/PR.
+**This file is the single changelog for the entire 1Guntha workspace.** Every change made to `1G-Frontend`, `1G-Backend`, config, infra, or docs must be recorded here in the same session — no exceptions.
 
-Minimum update checklist:
-- Add a dated entry under `## Change Log`.
-- Include what changed and why.
-- List impacted files/modules.
-- Add verification notes (tests/checks/manual validation).
-- Add follow-up items if something is partial.
+Applies to all work going forward (from 2026-06-09 onward), including:
+- Features, bug fixes, refactors, and UX tweaks
+- API, schema, or migration changes
+- Environment, deployment, and CI/CD updates
+- Dependency or tooling upgrades that affect behavior
 
-Do not leave this file stale after code or config changes.
+**Do not** create separate one-off context `.md` files for new work; append to `## Change Log` below instead.
+
+### Update checklist (required after every change)
+
+1. Set **Last updated** at the top of this file (date + short summary).
+2. Add a dated entry under `## Change Log` (newest last).
+3. Include **what changed and why** (problem → solution).
+4. List **impacted files/modules** (paths under `1G-Frontend/` and `1G-Backend/`).
+5. Add **verification notes** (build, type-check, tests, or manual steps run).
+6. Note **follow-up items** if anything is partial or deferred.
+
+Do not leave this file stale after code or config changes. If a session ends without updating this file, the work is incomplete.
 
 ---
 
@@ -234,4 +244,44 @@ Supporting operational docs:
 - Blog: blank detail page fixed (loading/error states, param subscription); stable slugs on edit; production styling on list/studio; save feedback banner + toast; global rich-text CSS.
 - Site visits: SMS OTP on agent assignment; `GET/POST /sitevisits/{id}/otp|resend-otp`; OTP shown on property detail; agent list upcoming-first with inline OTP complete and filter tabs.
 - Verification: backend build and frontend type-check succeeded.
+
+### 2026-06-09 — Admin-configurable homepage carousel (URL-based)
+
+- **Problem:** Homepage carousel used 3 hardcoded static images; admins could not manage banners without a code deploy.
+- **Backend:**
+  - Flyway `V12__carousel_slides.sql` — table `carousel_slides` (image_url, link_url, alt_text, display_order, active).
+  - Entity `CarouselSlide`, `CarouselSlideRepository`, DTOs (`CarouselSlideDto`, create/update requests).
+  - `CarouselService` — URL validation, CRUD, ordered listing.
+  - Public `GET /carousel/slides` (`CarouselController`) — active slides only.
+  - Admin `GET/POST/PUT/DELETE /admin/carousel/slides` (`AdminController`).
+  - `SecurityConfig` — `/carousel/**` added to public paths.
+- **Frontend:**
+  - `core/models/carousel.model.ts`
+  - `home.component.ts` — loads slides from API; `resolvePropertyImageUrl` for display; falls back to `assets/images/carousel/1–3.jpg` when none configured; optional click-through links; CSS `object-fit: cover` auto-fits any image size.
+  - `admin.component.ts` — **Homepage Carousel** section: add/edit/delete slides via image URL (no upload), live preview, reorder, active toggle.
+- **Verification:**
+  - Backend build: `mvn -DskipTests package` succeeded
+  - Frontend type-check: `npx tsc -p tsconfig.app.json --noEmit` succeeded
+
+### 2026-06-09 — Mandatory changelog rule (all future work)
+
+- **Policy:** All workspace changes must be logged in this file (`PROJECT_CONTEXT_SOURCE_OF_TRUTH.md`) in the same session; no separate ad-hoc context `.md` files for routine work.
+- Strengthened `## Mandatory Maintenance Rule` with explicit scope, checklist, and “work incomplete if changelog missing” guidance.
+- Added Cursor rule `.cursor/rules/update-context-source-of-truth.mdc` (`alwaysApply: true`) so agents update this file after every code/config change.
+
+### 2026-06-09 — Property form Add URL and multiple media fix
+
+- **Problem:** Add URL appeared broken after the first media item; users could not reliably add multiple images/videos. Root causes: ngx-toastr `preventDuplicates` suppressed repeated success toasts, strict URL validation rejected common CDN links, and backend did not persist `mediaType` on save.
+- **Frontend** (`1G-Frontend/src/app/features/property-form/property-form.component.ts`):
+  - Unique success toasts with count (`Image added (2 total)`) so duplicate prevention does not hide feedback.
+  - URL normalization: auto-prepend `https://`, `upgradeInsecureMediaUrl()`; relaxed image validation accepts any valid `http(s)://` URL.
+  - Media URL input changed from `type="url"` to `type="text"`.
+  - Immutable `mediaItems` updates + `ChangeDetectorRef.markForCheck()` on add/remove.
+  - Duplicate URL guard; inline media count; `onMediaUrlEnter()` prevents accidental form submit on Enter.
+  - Video preview fallback placeholder when embed URL cannot be resolved.
+- **Backend** (`1G-Backend/src/main/java/com/realestate/service/PropertyService.java`):
+  - `create()` and `update()` now persist `mediaType` from request (defaults to `IMAGE` when omitted).
+- **Verification:**
+  - Backend build: `mvn -DskipTests package` succeeded
+  - Frontend type-check: `npx tsc -p tsconfig.app.json --noEmit` succeeded
 
