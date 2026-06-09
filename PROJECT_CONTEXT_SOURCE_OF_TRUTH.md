@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-06-09 (carousel taller height + auto-cycle)
+Last updated: 2026-06-09 (header auth nav visibility fix)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
 
@@ -262,6 +262,17 @@ Supporting operational docs:
 - **Verification:**
   - Backend build: `mvn -DskipTests package` succeeded
   - Frontend type-check: `npx tsc -p tsconfig.app.json --noEmit` succeeded
+
+### 2026-06-09 — Header shows auth tabs when not logged in (fix)
+
+- **Problem:** My Properties, List Property, Agent, Admin, and Blog Studio sometimes appeared for logged-out users due to stale `user` in `localStorage` without a valid `accessToken`, and session expiry cleared storage without resetting `AuthService` in-memory state.
+- **Frontend:**
+  - `auth.service.ts` — `hydrateSessionFromStorage()` only restores session when token + user both exist; `clearSession()` centralizes logout/expiry cleanup; `getRole()` reads from user signal.
+  - `auth-refresh.interceptor.ts` — calls `auth.clearSession()` on refresh failure; syncs user signal after successful refresh.
+  - `header.component.ts` — nav gated on `auth.isLoggedIn()`; role links use `u.role` from user object.
+  - `auth.guard.ts`, `admin.guard.ts`, `agent.guard.ts`, `blog.guard.ts` — use `AuthService` instead of raw `localStorage`.
+  - `auth.service.spec.ts` — unit tests for hydration and clearSession.
+- **Verification:** `npx tsc -p tsconfig.app.json --noEmit` succeeded.
 
 ### 2026-06-09 — Homepage carousel taller height + auto-cycle
 
