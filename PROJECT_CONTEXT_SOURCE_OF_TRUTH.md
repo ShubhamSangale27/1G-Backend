@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-06-09 (admin-configurable homepage carousel)
+Last updated: 2026-06-09 (carousel taller height + auto-cycle)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
 
@@ -262,6 +262,15 @@ Supporting operational docs:
 - **Verification:**
   - Backend build: `mvn -DskipTests package` succeeded
   - Frontend type-check: `npx tsc -p tsconfig.app.json --noEmit` succeeded
+
+### 2026-06-09 — Homepage carousel taller height + auto-cycle
+
+- **Problem:** Carousel felt too short (220px) and did not auto-advance; slides load asynchronously so ngx-bootstrap interval never started.
+- **Frontend** (`1G-Frontend/src/app/features/home/home.component.ts`):
+  - Increased max height to **330px** (1.5×) via `--home-carousel-max-height` CSS variable.
+  - Configured carousel: `interval` 5000ms, `noWrap` false (cyclic), `noPause` true, `isAnimated` true, indicators when 2+ slides.
+  - Wrapped `<carousel>` in `*ngIf="displayCarouselSlides.length"` so auto-play starts after slides load.
+- **Verification:** Frontend type-check succeeded.
 
 ### 2026-06-09 — Mandatory changelog rule (all future work)
 
