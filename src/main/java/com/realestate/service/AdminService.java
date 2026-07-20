@@ -35,6 +35,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final WatchlistRepository watchlistRepository;
     private final PaymentService paymentService;
+    private final FaqService faqService;
 
     public List<PropertyDto> getPendingProperties(int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "createdAt"));
@@ -112,6 +113,7 @@ public class AdminService {
         m.put("completedSiteVisits", completedVisits);
         m.put("totalViews", totalViews);
         m.put("revenueLast30Days", revenue);
+        m.put("unmatchedFaqPending", faqService.countPendingUnmatched());
         return m;
     }
 

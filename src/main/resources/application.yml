@@ -68,6 +68,12 @@ app:
   # From address for emails (OTP, etc.)
   mail-from: ${MAIL_FROM:noreply@realestate.com}
 
+  # Support contact (FAQ chatbot fallback for out-of-scope questions)
+  support:
+    email: ${SUPPORT_EMAIL:support@1guntha.com}
+    website: ${SUPPORT_WEBSITE:https://1guntha.com}
+    phone: ${SUPPORT_PHONE:}
+
 logging:
   level:
     root: INFO
