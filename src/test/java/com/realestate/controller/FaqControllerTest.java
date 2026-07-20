@@ -114,8 +114,8 @@ class FaqControllerTest {
                                 "question", "What is the capital of France unrelated?"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matched").value(false))
-                .andExpect(jsonPath("$.answer", containsString("support@1guntha.com")))
-                .andExpect(jsonPath("$.contactEmail").value("support@1guntha.com"));
+                .andExpect(jsonPath("$.answer").value("Just Missedcall on 9134913491, will help you!"))
+                .andExpect(jsonPath("$.contactPhone").value("9134913491"));
 
         assertThat(unmatchedRepository.findAll()).hasSize(1);
         UnmatchedFaqQuestion u = unmatchedRepository.findAll().get(0);

@@ -85,9 +85,8 @@ class FaqServiceTest {
         FaqAskResponse res = faqService.ask("What is the weather in Mumbai?", null);
 
         assertThat(res.isMatched()).isFalse();
-        assertThat(res.getAnswer()).contains("support@1guntha.com");
-        assertThat(res.getAnswer()).contains("https://1guntha.com");
-        assertThat(res.getContactEmail()).isEqualTo("support@1guntha.com");
+        assertThat(res.getAnswer()).isEqualTo("Just Missedcall on 9134913491, will help you!");
+        assertThat(res.getContactPhone()).isEqualTo("9134913491");
 
         ArgumentCaptor<UnmatchedFaqQuestion> captor = ArgumentCaptor.forClass(UnmatchedFaqQuestion.class);
         verify(unmatchedRepository).save(captor.capture());
