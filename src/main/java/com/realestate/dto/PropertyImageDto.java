@@ -14,6 +14,7 @@ public class PropertyImageDto {
 
     private Long id;
     private String imageUrl;
+    private PropertyImage.MediaType mediaType;
     private String caption;
     private Integer displayOrder;
 
@@ -22,6 +23,7 @@ public class PropertyImageDto {
         return PropertyImageDto.builder()
                 .id(img.getId())
                 .imageUrl(img.getImageUrl())
+                .mediaType(img.getMediaType())
                 .caption(img.getCaption())
                 .displayOrder(img.getDisplayOrder())
                 .build();

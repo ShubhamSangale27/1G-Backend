@@ -117,6 +117,7 @@ public class PropertyService {
                 PropertyImage pi = PropertyImage.builder()
                         .property(p)
                         .imageUrl(img.getImageUrl())
+                        .mediaType(img.getMediaType() != null ? img.getMediaType() : PropertyImage.MediaType.IMAGE)
                         .caption(img.getCaption())
                         .displayOrder(order++)
                         .build();
@@ -141,6 +142,7 @@ public class PropertyService {
                 PropertyImage pi = PropertyImage.builder()
                         .property(p)
                         .imageUrl(img.getImageUrl())
+                        .mediaType(img.getMediaType() != null ? img.getMediaType() : PropertyImage.MediaType.IMAGE)
                         .caption(img.getCaption())
                         .displayOrder(order++)
                         .build();

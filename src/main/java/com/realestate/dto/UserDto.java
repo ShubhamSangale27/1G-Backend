@@ -21,6 +21,8 @@ public class UserDto {
     private User.Role role;
     private boolean emailVerified;
     private boolean mobileVerified;
+    private boolean active;
+    private String profileImageUrl;
     private Instant createdAt;
 
     public static UserDto from(User u) {
@@ -33,6 +35,8 @@ public class UserDto {
                 .role(u.getRole())
                 .emailVerified(u.isEmailVerified())
                 .mobileVerified(u.isMobileVerified())
+                .active(u.isActive())
+                .profileImageUrl(u.getProfileImageUrl())
                 .createdAt(u.getCreatedAt())
                 .build();
     }

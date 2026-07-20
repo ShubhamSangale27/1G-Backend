@@ -51,6 +51,7 @@ app:
   msg91:
     authkey: ${MSG91_AUTHKEY:}
     sender: ${MSG91_SENDER:}
+    templateId: ${MSG91_TEMPLATE_ID:}
   stripe:
     api-key: ${STRIPE_API_KEY:}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
@@ -62,6 +63,10 @@ app:
     credentials-json: ${GOOGLE_DRIVE_CREDENTIALS_JSON:}
     credentials-base64: ${GOOGLE_DRIVE_CREDENTIALS_BASE64:}
   mail-from: ${MAIL_FROM:noreply@realestate.com}
+  support:
+    email: ${SUPPORT_EMAIL:support@1guntha.com}
+    website: ${SUPPORT_WEBSITE:https://1guntha.com}
+    phone: ${SUPPORT_PHONE:}
 
 logging:
   level:

@@ -25,8 +25,12 @@ import javax.imageio.ImageIO;
 @RequiredArgsConstructor
 public class ImageUploadService {
 
-    private static final List<String> ALLOWED_TYPES = Arrays.asList("image/jpeg", "image/png", "image/webp", "image/gif");
-    private static final long MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+    private static final List<String> ALLOWED_TYPES = Arrays.asList(
+            "image/jpeg", "image/png", "image/webp", "image/gif",
+            "video/mp4", "video/webm", "video/ogg", "video/quicktime"
+    );
+    private static final long MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+    private static final long MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
     private static final int MAX_WIDTH = 1200;
     private static final int MAX_HEIGHT = 1200;
     private static final int THUMB_WIDTH = 300;
@@ -43,15 +47,21 @@ public class ImageUploadService {
             throw new BadRequestException("No file provided");
         }
         String contentType = file.getContentType();
-        if (contentType == null || !ALLOWED_TYPES.contains(contentType.toLowerCase())) {
-            throw new BadRequestException("Invalid image type. Allowed: JPEG, PNG, WebP, GIF");
+        if (contentType == null || !ALLOWED_TYPES.contains(contentType.toLowerCase().split(";")[0].trim())) {
+            throw new BadRequestException("Invalid file type. Allowed images: JPEG, PNG, WebP, GIF; videos: MP4, WebM, OGG, MOV");
         }
-        if (file.getSize() > MAX_SIZE_BYTES) {
-            throw new BadRequestException("File too large. Max 10 MB");
+        long maxSize = isVideo(contentType) ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
+        if (file.getSize() > maxSize) {
+            throw new BadRequestException(isVideo(contentType)
+                    ? "Video too large. Max 50 MB"
+                    : "Image too large. Max 10 MB");
         }
         try {
             String ext = getExtension(contentType);
             String baseName = UUID.randomUUID().toString().replace("-", "");
+            if (isVideo(contentType)) {
+                return uploadVideo(file, baseName, ext, contentType);
+            }
             String format = ext.replace(".", "");
             if (format.isEmpty()) format = "jpg";
 
@@ -105,6 +115,21 @@ public class ImageUploadService {
         return new ImageUploadResult(mainUrl, thumbUrl);
     }
 
+    private ImageUploadResult uploadVideo(MultipartFile file, String baseName, String ext, String contentType) throws IOException {
+        String name = baseName + "_video" + ext;
+        byte[] bytes = file.getBytes();
+        if (googleDriveUploadService.isAvailable()) {
+            String url = googleDriveUploadService.upload(bytes, name, getMimeType(contentType));
+            return new ImageUploadResult(url, url);
+        }
+        Path base = Paths.get(uploadDir).toAbsolutePath().normalize();
+        Files.createDirectories(base);
+        Path path = base.resolve(name);
+        Files.write(path, bytes);
+        String urlPath = "/uploads/" + name;
+        return new ImageUploadResult(urlPath, urlPath);
+    }
+
     private ImageUploadResult uploadToLocal(BufferedImage original, String baseName, String ext, String format) throws IOException {
         Path base = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(base);
@@ -141,8 +166,17 @@ public class ImageUploadService {
             case "image/png" -> ".png";
             case "image/webp" -> ".webp";
             case "image/gif" -> ".gif";
+            case "video/mp4" -> ".mp4";
+            case "video/webm" -> ".webm";
+            case "video/ogg" -> ".ogv";
+            case "video/quicktime" -> ".mov";
             default -> ".jpg";
         };
+    }
+
+    private static boolean isVideo(String contentType) {
+        if (contentType == null) return false;
+        return contentType.toLowerCase().startsWith("video/");
     }
 
     public record ImageUploadResult(String url, String thumbnailUrl) {}

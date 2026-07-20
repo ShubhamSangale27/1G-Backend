@@ -36,3 +36,7 @@ app:
     expiry-minutes: 10
     length: 6
   frontend-url: http://localhost:4200
+  support:
+    email: support@1guntha.com
+    website: https://1guntha.com
+    phone:

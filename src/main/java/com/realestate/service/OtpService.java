@@ -8,20 +8,36 @@ import com.realestate.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 @Service
 @Slf4j
 public class OtpService {
+    public record OtpSendResult(
+            String identifier,
+            OtpVerification.OtpChannel channel,
+            Instant resendAvailableAt,
+            int resendAttemptsUsed,
+            int resendAttemptsRemaining,
+            Instant blockedUntil
+    ) {}
 
     private final OtpVerificationRepository otpRepository;
     private final UserRepository userRepository;
@@ -52,6 +68,9 @@ public class OtpService {
     @Value("${app.msg91.sender:}")
     private String msg91Sender;
 
+    @Value("${app.msg91.templateId:}")
+    private String msg91templateId;
+
     /** When set (e.g. 123456), use this OTP for mobile verification and skip MSG91 – for testing without DLT. */
     @Value("${app.otp.test-otp:}")
     private String testOtp;
@@ -61,10 +80,13 @@ public class OtpService {
     private boolean logOtp;
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String MSG91_SEND_OTP_URL = "https://api.msg91.com/api/sendotp.php";
+    private static final String MSG91_SEND_OTP_URL = "https://control.msg91.com/api/v5/otp";
+    private static final int MAX_RESEND_ATTEMPTS_PER_DAY = 3;
+    private static final int RESEND_BASE_WAIT_MINUTES = 5;
 
     @Transactional
-    public void sendEmailOtp(String email) {
+    public OtpSendResult sendEmailOtp(String email) {
+        OtpSendResult policy = validateAndBuildResendPolicy(email, OtpVerification.OtpChannel.EMAIL);
         String otp = generateOtp();
         OtpVerification ov = OtpVerification.builder()
                 .identifier(email)
@@ -76,10 +98,28 @@ public class OtpService {
         otpRepository.save(ov);
         sendEmail(email, "Your verification OTP", "Your OTP is: " + otp + ". Valid for " + expiryMinutes + " minutes.");
         log.info("Email OTP sent to {}", email);
+        return policy;
+    }
+
+    /** Send site-visit completion OTP via SMS (uses same MSG91 template as signup OTP). */
+    public void sendVisitCompletionOtp(String mobile, String otpCode) {
+        if (mobile == null || mobile.isBlank()) {
+            log.warn("Cannot send visit OTP SMS — no mobile on file");
+            return;
+        }
+        if (logOtp) {
+            log.info("Site visit OTP for mobile {}: {} (check logs or use test OTP in dev)", mobile, otpCode);
+        }
+        if (testOtp != null && !testOtp.isBlank()) {
+            log.info("Test OTP mode: site visit OTP for {} is {}", mobile, otpCode);
+            return;
+        }
+        sendSmsViaMsg91(mobile, otpCode);
     }
 
     @Transactional
-    public void sendMobileOtp(String mobile) {
+    public OtpSendResult sendMobileOtp(String mobile) {
+        OtpSendResult policy = validateAndBuildResendPolicy(mobile, OtpVerification.OtpChannel.MOBILE);
         String otp = (testOtp != null && !testOtp.isBlank()) ? testOtp.trim() : generateOtp();
         OtpVerification ov = OtpVerification.builder()
                 .identifier(mobile)
@@ -98,6 +138,7 @@ public class OtpService {
             sendSmsViaMsg91(mobile, otp);
             log.info("SMS OTP sent to {} via MSG91", mobile);
         }
+        return policy;
     }
 
     @Transactional
@@ -117,6 +158,21 @@ public class OtpService {
             userRepository.save(user);
         });
         return true;
+    }
+
+    /** Verify OTP without updating user verification flags (e.g. password reset). */
+    @Transactional
+    public void verifyOtpCode(String identifier, OtpVerification.OtpChannel channel, String otp) {
+        OtpVerification ov = otpRepository.findTopByIdentifierAndChannelOrderByCreatedAtDesc(identifier, channel)
+                .orElseThrow(() -> new BadRequestException("No OTP found"));
+        if (ov.getExpiresAt().isBefore(Instant.now())) {
+            throw new BadRequestException("OTP expired");
+        }
+        if (!ov.getOtpCode().equals(otp)) {
+            throw new BadRequestException("Invalid OTP");
+        }
+        ov.setVerified(true);
+        otpRepository.save(ov);
     }
 
     @Transactional
@@ -171,20 +227,38 @@ public class OtpService {
             log.warn("MSG91 authkey not configured. Set MSG91_AUTHKEY or app.msg91.authkey. OTP for {} would be: {}", mobile, otp);
             return;
         }
+        if (msg91templateId == null || msg91templateId.isBlank()) {
+            log.warn("MSG91 templateId not configured. Set MSG91_TEMPLATE_ID or app.msg91.templateId. OTP for {} would be: {}", mobile, otp);
+            return;
+        }
         String mobileE164 = normalizeMobileE164(mobile);
         try {
             StringBuilder url = new StringBuilder(MSG91_SEND_OTP_URL)
                     .append("?authkey=").append(java.net.URLEncoder.encode(msg91Authkey, java.nio.charset.StandardCharsets.UTF_8))
                     .append("&mobile=").append(mobileE164)
-                    .append("&otp=").append(otp)
-                    .append("&otp_expiry=").append(expiryMinutes)
-                    .append("&otp_length=").append(otpLength);
-            if (msg91Sender != null && !msg91Sender.isBlank()) {
-                url.append("&sender=").append(java.net.URLEncoder.encode(msg91Sender, java.nio.charset.StandardCharsets.UTF_8));
-            }
+                    .append("&template_id=").append(java.net.URLEncoder.encode(msg91templateId, java.nio.charset.StandardCharsets.UTF_8));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(Map.of("OTP", otp), headers);
+
             RestTemplate rest = new RestTemplate();
-            String response = rest.getForObject(URI.create(url.toString()), String.class);
-            log.debug("MSG91 send OTP response: {}", response);
+            ResponseEntity<String> response = rest.exchange(
+                    URI.create(url.toString()),
+                    HttpMethod.POST,
+                    request,
+                    String.class
+            );
+            int status = response.getStatusCode().value();
+            String responseBody = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("MSG91 send OTP success for {}. status={}, response={}", mobile, status, responseBody);
+            } else {
+                log.error("MSG91 send OTP non-success for {}. status={}, response={}", mobile, status, responseBody);
+            }
+        } catch (HttpStatusCodeException e) {
+            log.error("MSG91 send OTP HTTP error for {}. status={}, response={}",
+                    mobile, e.getStatusCode().value(), e.getResponseBodyAsString());
         } catch (Exception e) {
             log.error("MSG91 send OTP failed for {}: {}", mobile, e.getMessage());
         }
@@ -199,5 +273,37 @@ public class OtpService {
             return digits.isEmpty() ? mobile : digits;
         }
         return digits.isEmpty() ? mobile : digits;
+    }
+
+    private OtpSendResult validateAndBuildResendPolicy(String identifier, OtpVerification.OtpChannel channel) {
+        Instant now = Instant.now();
+        Instant lookbackStart = now.minus(Duration.ofHours(24));
+        long sendsInLast24Hours = otpRepository.countByIdentifierAndChannelAndCreatedAtAfter(identifier, channel, lookbackStart);
+
+        if (sendsInLast24Hours >= MAX_RESEND_ATTEMPTS_PER_DAY + 1L) {
+            Instant blockedUntil = otpRepository
+                    .findFirstByIdentifierAndChannelAndCreatedAtAfterOrderByCreatedAtAsc(identifier, channel, lookbackStart)
+                    .map(first -> first.getCreatedAt().plus(Duration.ofHours(24)))
+                    .orElse(now.plus(Duration.ofHours(24)));
+            long mins = Math.max(1, Duration.between(now, blockedUntil).toMinutes());
+            throw new BadRequestException("OTP resend limit reached. Please try again after " + mins + " minutes.");
+        }
+
+        if (sendsInLast24Hours > 0) {
+            OtpVerification last = otpRepository.findTopByIdentifierAndChannelOrderByCreatedAtDesc(identifier, channel).orElse(null);
+            if (last != null && last.getCreatedAt() != null) {
+                long cooldownMinutes = sendsInLast24Hours * RESEND_BASE_WAIT_MINUTES;
+                Instant nextAllowedAt = last.getCreatedAt().plus(Duration.ofMinutes(cooldownMinutes));
+                if (nextAllowedAt.isAfter(now)) {
+                    long mins = Math.max(1, Duration.between(now, nextAllowedAt).toMinutes());
+                    throw new BadRequestException("Please wait " + mins + " minutes before requesting OTP again.");
+                }
+            }
+        }
+
+        int usedAfterThisSend = (int) sendsInLast24Hours;
+        int remaining = Math.max(0, MAX_RESEND_ATTEMPTS_PER_DAY - usedAfterThisSend);
+        Instant resendAvailableAt = now.plus(Duration.ofMinutes((sendsInLast24Hours + 1) * RESEND_BASE_WAIT_MINUTES));
+        return new OtpSendResult(identifier, channel, resendAvailableAt, usedAfterThisSend, remaining, null);
     }
 }

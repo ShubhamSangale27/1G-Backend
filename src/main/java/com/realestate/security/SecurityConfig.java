@@ -40,12 +40,17 @@ public class SecurityConfig {
             "/auth/verify-email",
             "/auth/refresh",
             "/auth/forgot-password",
+            "/auth/reset-password",
             "/otp/send",
             "/otp/verify",
             "/properties/public/**",
             "/properties/search",
+            "/carousel/**",
+            "/blogs/published/**",
             "/uploads/**",
             "/plans",
+            "/faq",
+            "/faq/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"
@@ -65,6 +70,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/properties/{id}").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/agent/**").hasAnyRole("AGENT", "ADMIN")
+                        .requestMatchers("/blogs/editor/**").hasAnyRole("BLOG", "ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -78,7 +84,9 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 origin,
                 "http://localhost:4200",
-                "http://127.0.0.1:4200"
+                "http://127.0.0.1:4200",
+                "https://www.1guntha.com",
+                "http://www.1guntha.com"
         ));
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

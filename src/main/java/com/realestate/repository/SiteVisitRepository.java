@@ -34,9 +34,11 @@ public interface SiteVisitRepository extends JpaRepository<SiteVisit, Long> {
                                     @Param("startToday") Instant startToday, @Param("endToday") Instant endToday,
                                     Pageable pageable);
 
-    @Query("SELECT COUNT(sv) FROM SiteVisit sv WHERE sv.agent.id = :agentId AND sv.scheduledAt >= :start AND sv.scheduledAt < :end AND sv.status IN ('PENDING_ASSIGNMENT', 'ASSIGNED')")
+    @Query("SELECT COUNT(sv) FROM SiteVisit sv WHERE sv.agent.id = :agentId AND sv.scheduledAt >= :start AND sv.scheduledAt < :end AND sv.status = 'ASSIGNED'")
     long countDueTodayForAgent(@Param("agentId") Long agentId, @Param("start") Instant start, @Param("end") Instant end);
 
-    @Query("SELECT sv FROM SiteVisit sv WHERE sv.agent.id = :agentId AND sv.status IN ('PENDING_ASSIGNMENT', 'ASSIGNED') ORDER BY CASE WHEN (sv.scheduledAt >= :startToday AND sv.scheduledAt < :endToday) THEN 0 ELSE 1 END, sv.scheduledAt ASC")
-    Page<SiteVisit> findByAgentIdDueTodayFirst(@Param("agentId") Long agentId, @Param("startToday") Instant startToday, @Param("endToday") Instant endToday, Pageable pageable);
+    @Query("SELECT sv FROM SiteVisit sv WHERE sv.agent.id = :agentId AND sv.status IN ('ASSIGNED', 'COMPLETED') " +
+            "ORDER BY CASE WHEN sv.status = 'COMPLETED' THEN 2 WHEN sv.scheduledAt >= :now THEN 0 ELSE 1 END, " +
+            "CASE WHEN sv.status = 'COMPLETED' THEN sv.scheduledAt END DESC, sv.scheduledAt ASC")
+    Page<SiteVisit> findByAgentIdUpcomingFirst(@Param("agentId") Long agentId, @Param("now") Instant now, Pageable pageable);
 }

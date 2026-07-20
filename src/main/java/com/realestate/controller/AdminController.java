@@ -3,6 +3,7 @@ package com.realestate.controller;
 import com.realestate.dto.*;
 import com.realestate.security.UserPrincipal;
 import com.realestate.service.AdminService;
+import com.realestate.service.CarouselService;
 import com.realestate.service.PropertyService;
 import com.realestate.service.SiteVisitService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
@@ -28,6 +30,7 @@ public class AdminController {
     private final AdminService adminService;
     private final SiteVisitService siteVisitService;
     private final PropertyService propertyService;
+    private final CarouselService carouselService;
 
     @GetMapping("/properties")
     @Operation(summary = "Get all properties (admin) with optional filters")
@@ -154,5 +157,61 @@ public class AdminController {
     public ResponseEntity<SiteVisitDto> reassignAgent(@PathVariable Long id, @RequestParam Long agentId,
                                                         @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(siteVisitService.reassignAgent(id, agentId, principal));
+    }
+
+    @GetMapping("/users")
+    @Operation(summary = "List all users")
+    public ResponseEntity<List<UserDto>> getAllUsers() {
+        return ResponseEntity.ok(adminService.getAllUsers());
+    }
+
+    @PutMapping("/users/{id}/status")
+    @Operation(summary = "Activate or suspend a user account")
+    public ResponseEntity<UserDto> setUserStatus(@PathVariable Long id,
+                                                 @RequestParam boolean active,
+                                                 @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(adminService.setUserActive(id, active, principal));
+    }
+
+    @PutMapping("/users/{id}/role")
+    @Operation(summary = "Change user role (ADMIN, AGENT, BLOG, USER)")
+    public ResponseEntity<UserDto> setUserRole(@PathVariable Long id,
+                                               @RequestParam com.realestate.entity.User.Role role,
+                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(adminService.setUserRole(id, role, principal));
+    }
+
+    @DeleteMapping("/users/{id}")
+    @Operation(summary = "Delete a user and related data")
+    public ResponseEntity<Map<String, Boolean>> deleteUser(@PathVariable Long id,
+                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        adminService.deleteUser(id, principal);
+        return ResponseEntity.ok(Map.of("deleted", true));
+    }
+
+    @GetMapping("/carousel/slides")
+    @Operation(summary = "List all homepage carousel slides (admin)")
+    public ResponseEntity<List<CarouselSlideDto>> getAllCarouselSlides() {
+        return ResponseEntity.ok(carouselService.getAllSlides());
+    }
+
+    @PostMapping("/carousel/slides")
+    @Operation(summary = "Create a homepage carousel slide")
+    public ResponseEntity<CarouselSlideDto> createCarouselSlide(@RequestBody CarouselSlideCreateRequest request) {
+        return ResponseEntity.ok(carouselService.create(request));
+    }
+
+    @PutMapping("/carousel/slides/{id}")
+    @Operation(summary = "Update a homepage carousel slide")
+    public ResponseEntity<CarouselSlideDto> updateCarouselSlide(@PathVariable Long id,
+                                                                @RequestBody CarouselSlideUpdateRequest request) {
+        return ResponseEntity.ok(carouselService.update(id, request));
+    }
+
+    @DeleteMapping("/carousel/slides/{id}")
+    @Operation(summary = "Delete a homepage carousel slide")
+    public ResponseEntity<Map<String, Boolean>> deleteCarouselSlide(@PathVariable Long id) {
+        carouselService.delete(id);
+        return ResponseEntity.ok(Map.of("deleted", true));
     }
 }

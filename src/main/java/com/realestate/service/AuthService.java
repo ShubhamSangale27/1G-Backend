@@ -2,6 +2,7 @@ package com.realestate.service;
 
 import com.realestate.dto.*;
 import com.realestate.entity.EmailVerificationToken;
+import com.realestate.entity.OtpVerification;
 import com.realestate.entity.PendingSignup;
 import com.realestate.entity.RefreshToken;
 import com.realestate.entity.User;
@@ -56,6 +57,7 @@ public class AuthService {
 
     private static final int PENDING_SIGNUP_EXPIRY_MINUTES = 15;
     private static final int EMAIL_VERIFICATION_LINK_EXPIRY_HOURS = 24;
+    private static final int MAX_RESEND_ATTEMPTS_PER_DAY = 3;
 
     public AuthService(UserRepository userRepository, PendingSignupRepository pendingSignupRepository,
                        RefreshTokenRepository refreshTokenRepository, EmailVerificationTokenRepository emailVerificationTokenRepository,
@@ -102,11 +104,38 @@ public class AuthService {
                         .expiresAt(expiresAt)
                         .build());
         pending = pendingSignupRepository.save(pending);
-        otpService.sendMobileOtp(pending.getMobile());
+        OtpService.OtpSendResult otpSendResult = otpService.sendMobileOtp(pending.getMobile());
         return SignupResponse.builder()
                 .message("OTP sent to your mobile. Enter it on the next screen to complete registration.")
                 .email(pending.getEmail())
                 .mobile(pending.getMobile())
+                .resendAttemptsUsed(otpSendResult.resendAttemptsUsed())
+                .resendAttemptsRemaining(otpSendResult.resendAttemptsRemaining())
+                .resendAvailableAt(otpSendResult.resendAvailableAt())
+                .maxResendAttemptsPerDay(MAX_RESEND_ATTEMPTS_PER_DAY)
+                .build();
+    }
+
+    @Transactional
+    public SignupResponse resendSignupOtp(ResendSignupOtpRequest request) {
+        PendingSignup pending = pendingSignupRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new BadRequestException("No pending signup found. Please sign up again."));
+        if (pending.getExpiresAt().isBefore(Instant.now())) {
+            pendingSignupRepository.delete(pending);
+            throw new BadRequestException("Verification window expired. Please sign up again.");
+        }
+        if (!pending.getMobile().equals(request.getMobile())) {
+            throw new BadRequestException("Mobile does not match pending signup.");
+        }
+        OtpService.OtpSendResult otpSendResult = otpService.sendMobileOtp(request.getMobile());
+        return SignupResponse.builder()
+                .message("OTP resent successfully.")
+                .email(request.getEmail())
+                .mobile(request.getMobile())
+                .resendAttemptsUsed(otpSendResult.resendAttemptsUsed())
+                .resendAttemptsRemaining(otpSendResult.resendAttemptsRemaining())
+                .resendAvailableAt(otpSendResult.resendAvailableAt())
+                .maxResendAttemptsPerDay(MAX_RESEND_ATTEMPTS_PER_DAY)
                 .build();
     }
 
@@ -141,18 +170,17 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmailIgnoreCase(normalizeEmail(request.getEmail()))
                 .orElseThrow(() -> new BadRequestException("Invalid email or password"));
         if (!user.isActive()) {
-            throw new BadRequestException("Account is deactivated");
+            throw new BadRequestException("Suspended user: your account has been deactivated. Please contact admin.");
         }
         if (!user.isMobileVerified()) {
             throw new BadRequestException("Please verify your mobile number before logging in");
         }
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(user.getEmail(), request.getPassword())
         );
-        user = userRepository.findByEmail(request.getEmail()).orElseThrow();
         return buildAuthResponse(user);
     }
 
@@ -199,6 +227,86 @@ public class AuthService {
         otpService.verifyMobileOtp(user.getMobile(), mobileOtp);
         user.setMobileVerified(true);
         userRepository.save(user);
+    }
+
+    /** Request password reset OTP sent to the user's registered mobile. */
+    @Transactional
+    public PasswordOtpResponse forgotPassword(ForgotPasswordRequest request) {
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(normalizeEmail(request.getEmail()));
+        if (userOpt.isEmpty()) {
+            return PasswordOtpResponse.builder()
+                    .message("If an account exists for this email, an OTP has been sent to the registered mobile number.")
+                    .build();
+        }
+        User user = userOpt.get();
+        if (user.getMobile() == null || user.getMobile().isBlank()) {
+            throw new BadRequestException("No mobile number on file. Please contact support.");
+        }
+        OtpService.OtpSendResult result = otpService.sendMobileOtp(user.getMobile());
+        return PasswordOtpResponse.builder()
+                .message("OTP sent to your registered mobile number ending in " + maskMobile(user.getMobile()) + ".")
+                .maskedMobile(maskMobile(user.getMobile()))
+                .resendAvailableAt(result.resendAvailableAt())
+                .resendAttemptsUsed(result.resendAttemptsUsed())
+                .resendAttemptsRemaining(result.resendAttemptsRemaining())
+                .maxResendAttemptsPerDay(MAX_RESEND_ATTEMPTS_PER_DAY)
+                .build();
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByEmailIgnoreCase(normalizeEmail(request.getEmail()))
+                .orElseThrow(() -> new BadRequestException("Invalid email or OTP"));
+        if (user.getMobile() == null || user.getMobile().isBlank()) {
+            throw new BadRequestException("Cannot reset password for this account");
+        }
+        otpService.verifyOtpCode(user.getMobile(), OtpVerification.OtpChannel.MOBILE, request.getOtp());
+        updatePasswordHash(user, request.getNewPassword());
+        refreshTokenRepository.deleteByUserId(user.getId());
+    }
+
+    /** Send OTP to authenticated user's mobile for password change. */
+    @Transactional
+    public PasswordOtpResponse sendChangePasswordOtp(UserPrincipal principal) {
+        User user = userRepository.findById(principal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getMobile() == null || user.getMobile().isBlank()) {
+            throw new BadRequestException("No mobile number on file. Please contact support.");
+        }
+        OtpService.OtpSendResult result = otpService.sendMobileOtp(user.getMobile());
+        return PasswordOtpResponse.builder()
+                .message("OTP sent to your mobile ending in " + maskMobile(user.getMobile()) + ".")
+                .maskedMobile(maskMobile(user.getMobile()))
+                .resendAvailableAt(result.resendAvailableAt())
+                .resendAttemptsUsed(result.resendAttemptsUsed())
+                .resendAttemptsRemaining(result.resendAttemptsRemaining())
+                .maxResendAttemptsPerDay(MAX_RESEND_ATTEMPTS_PER_DAY)
+                .build();
+    }
+
+    @Transactional
+    public void changePassword(UserPrincipal principal, ChangePasswordRequest request) {
+        User user = userRepository.findById(principal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getMobile() == null || user.getMobile().isBlank()) {
+            throw new BadRequestException("No mobile number on file");
+        }
+        otpService.verifyOtpCode(user.getMobile(), OtpVerification.OtpChannel.MOBILE, request.getOtp());
+        updatePasswordHash(user, request.getNewPassword());
+        refreshTokenRepository.deleteByUserId(user.getId());
+    }
+
+    private void updatePasswordHash(User user, String rawPassword) {
+        String encoded = passwordEncoder.encode(rawPassword);
+        user.setPasswordHash(encoded);
+        userRepository.saveAndFlush(user);
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            throw new BadRequestException("Password could not be updated. Please try again.");
+        }
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
     }
 
     /** Send email verification link to the current user's email. User can verify later via the link. */
@@ -256,6 +364,11 @@ public class AuthService {
         } catch (Exception e) {
             log.warn("Failed to send email to {}: {}", to, e.getMessage());
         }
+    }
+
+    private static String maskMobile(String mobile) {
+        if (mobile == null || mobile.length() < 4) return "****";
+        return mobile.substring(mobile.length() - 4);
     }
 
     private static String normalizePhone(String phone) {

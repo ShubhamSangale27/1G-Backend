@@ -33,6 +33,16 @@ public class VisitOTP {
     @Builder.Default
     private boolean used = false;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private int resendCount = 0;
+
+    @Column(nullable = false)
+    private Instant firstSentAt;
+
+    @Column(nullable = false)
+    private Instant lastSentAt;
+
     @CreationTimestamp
     private Instant createdAt;
 }

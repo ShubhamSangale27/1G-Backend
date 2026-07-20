@@ -25,7 +25,7 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
     @Column(nullable = false)
@@ -50,6 +50,9 @@ public class User {
     @Column(nullable = false)
     @Builder.Default
     private boolean active = true;
+
+    @Column(name = "profile_image_url", length = 1000)
+    private String profileImageUrl;
 
     @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
@@ -78,6 +81,6 @@ public class User {
     private Instant updatedAt;
 
     public enum Role {
-        USER, ADMIN, AGENT
+        USER, ADMIN, AGENT, BLOG
     }
 }

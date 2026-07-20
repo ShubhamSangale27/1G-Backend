@@ -4,7 +4,9 @@ import com.realestate.dto.*;
 import com.realestate.entity.Property;
 import com.realestate.entity.SiteVisit;
 import com.realestate.entity.User;
+import com.realestate.exception.BadRequestException;
 import com.realestate.exception.ResourceNotFoundException;
+import com.realestate.security.UserPrincipal;
 import com.realestate.repository.PropertyAnalyticsRepository;
 import com.realestate.repository.PropertyRepository;
 import com.realestate.repository.SiteVisitRepository;
@@ -33,6 +35,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final WatchlistRepository watchlistRepository;
     private final PaymentService paymentService;
+    private final FaqService faqService;
 
     public List<PropertyDto> getPendingProperties(int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "createdAt"));
@@ -110,6 +113,7 @@ public class AdminService {
         m.put("completedSiteVisits", completedVisits);
         m.put("totalViews", totalViews);
         m.put("revenueLast30Days", revenue);
+        m.put("unmatchedFaqPending", faqService.countPendingUnmatched());
         return m;
     }
 
@@ -119,6 +123,45 @@ public class AdminService {
         List<UserDto> result = agents.stream().map(UserDto::from).collect(Collectors.toList());
         admins.stream().map(UserDto::from).forEach(result::add);
         return result;
+    }
+
+    public List<UserDto> getAllUsers() {
+        return userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
+                .stream()
+                .map(UserDto::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public UserDto setUserActive(Long userId, boolean active, UserPrincipal principal) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        if (user.getId().equals(principal.getId()) && !active) {
+            throw new BadRequestException("You cannot suspend your own admin account.");
+        }
+        user.setActive(active);
+        return UserDto.from(userRepository.save(user));
+    }
+
+    @Transactional
+    public UserDto setUserRole(Long userId, User.Role role, UserPrincipal principal) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        if (role != User.Role.ADMIN && role != User.Role.AGENT && role != User.Role.BLOG && role != User.Role.USER) {
+            throw new BadRequestException("Role must be one of ADMIN, AGENT, BLOG, USER.");
+        }
+        if (user.getId().equals(principal.getId()) && role != User.Role.ADMIN) {
+            throw new BadRequestException("You cannot change your own role from ADMIN.");
+        }
+        user.setRole(role);
+        return UserDto.from(userRepository.save(user));
+    }
+
+    @Transactional
+    public void deleteUser(Long userId, UserPrincipal principal) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        if (user.getId().equals(principal.getId())) {
+            throw new BadRequestException("You cannot delete your own admin account.");
+        }
+        userRepository.delete(user);
     }
 
     public com.realestate.dto.PageResponse<PropertyDto> getAllProperties(int page, int size, Boolean featuredOnly, Boolean newOnly) {
