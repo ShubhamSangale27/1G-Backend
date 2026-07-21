@@ -74,6 +74,11 @@ app:
     website: ${SUPPORT_WEBSITE:https://1guntha.com}
     phone: ${SUPPORT_PHONE:}
 
+  # Firebase Cloud Messaging (admin push to mobile)
+  firebase:
+    enabled: ${FIREBASE_ENABLED:false}
+    credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+
 logging:
   level:
     root: INFO

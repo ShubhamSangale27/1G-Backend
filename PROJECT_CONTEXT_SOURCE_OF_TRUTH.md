@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-06-09 (header auth nav visibility fix)
+Last updated: 2026-07-21 (delete account — self-service + admin hardening)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
 
@@ -35,9 +35,12 @@ Do not leave this file stale after code or config changes. If a session ends wit
 
 - Product name: `1Guntha` (rebranded from RealEstate naming in older files).
 - Purpose: full-stack real-estate platform (buy/sell/rent, property management, search, auth, admin, site visits, analytics-like metrics).
-- Workspace has parallel app folders:
-  - `frontend` + `backend`
-  - `1G-Frontend` + `1G-Backend`
+- Workspace (`D:\DevSoftwares\1Guntha`) contains three active codebases sharing one backend API:
+  - **`1G-Backend`** — Spring Boot API (primary backend)
+  - **`1G-Frontend`** — Angular web app (primary web client)
+  - **`1G-Mobile`** — Flutter Android/iOS app (native mobile client)
+- Legacy/alternate folders may exist as `frontend` + `backend`; prefer **`1G-*`** paths for active development.
+- Target feature branch for recent work: **`update/31052026`**
 - Primary stack:
   - Frontend: Angular
   - Backend: Spring Boot (Java 17, Maven)
@@ -150,6 +153,101 @@ Supporting operational docs:
 - `1G-Backend/docs/HOSTING.md`
 - `1G-Backend/GOOGLE_DRIVE_SETUP.md`
 - `1G-Backend/docs/MSG91_CREDENTIALS.md`
+
+Mobile docs (under `1G-Mobile/`):
+
+- `1G-Mobile/PROJECT_CONTEXT.md` — mobile source-of-truth
+- `1G-Mobile/README.md` — MVP scope and setup
+- `1G-Mobile/01_Project_Analysis.md` — full Angular→Flutter API/feature inventory
+- `1G-Mobile/02_Flutter_Migration_Plan.md` — phased migration plan
+- `1G-Mobile/03_Flutter_Architecture.md` — Clean Architecture + Riverpod spec
+- `1G-Mobile/BUILD_COMMANDS.md` — APK build/install
+- `1G-Mobile/ANDROID_DEVICE_SETUP.md` — physical device setup
+
+---
+
+## Full Workspace Map (2026-07-21 scan)
+
+### 1G-Backend (`1G-Backend/`)
+
+| Area | Details |
+|------|---------|
+| Stack | Spring Boot 3.x, JDK 17, Maven, PostgreSQL, Flyway, JWT, MSG91 OTP |
+| API base | `/api` context path |
+| Migrations | V1–V14 (latest: `V14__market_statistics.sql`) |
+| Public paths | auth, properties search/public, carousel, blogs published, FAQ, market-stats, uploads |
+| Admin | metrics, properties, users, site visits, carousel, FAQs, market statistics |
+| Seed users | admin@realestate.com, agent@realestate.com, user@realestate.com, blogger@realestate.com |
+
+**Flyway sequence (V1–V14):** init → seed → pending_signups → site_visit_comments → featured → email_verification → media_type → otp_throttling → blog → blog_seo → profile_image → carousel → **faqs** (V13) → **market_statistics** (V14).
+
+### 1G-Frontend (`1G-Frontend/`)
+
+| Area | Details |
+|------|---------|
+| Stack | Angular 15+ (standalone components), ngx-toastr, Leaflet, Bootstrap-inspired CSS vars |
+| Brand | 1Guntha (99acres-inspired UI) |
+| Key features | Auth (JWT refresh), search, property CRUD, site visits, admin panel, blog, carousel, FAQ chatbot floater, property growth SIP calculator |
+| Location data | `core/data/indian-locations.ts` — State→City only (36 states/UTs) |
+| Patterns | `NgZone.run` + `cdr.detectChanges()` after HTTP; `ApiService` + `ConfigService`; guards for auth/admin/agent/blog |
+
+### 1G-Mobile (`1G-Mobile/`)
+
+| Area | Details |
+|------|---------|
+| Package | `com.oneguntha.one_guntha` |
+| Stack | Flutter 3.44+, Dart 3.12+, Riverpod, Dio, GoRouter, flutter_secure_storage |
+| API | Same Heroku/backend as web: `https://og-backend-ec80a37e82c0.herokuapp.com/api` (prod domain target: `https://1guntha.com/api`) |
+| Architecture | Feature-first Clean Architecture |
+| Font | Poppins (mobile); web uses DM Sans + Space Grotesk |
+| Roles on mobile | **USER** and **AGENT** only — **ADMIN** and **BLOG blocked** (web-only) |
+
+**Mobile MVP includes:** auth (login/signup/OTP/forgot password), persistent session, home, search, property detail, favorites/watchlist, profile, dashboard, list/edit properties (URL media), site visits, agent panel, blog read-only, caching (stale-while-revalidate).
+
+**Mobile excludes:** admin panel, blog studio, premium payments.
+
+**Key mobile paths:**
+
+```
+1G-Mobile/lib/
+├── config/          env_config, app_router, route_paths
+├── core/            auth, dio, cache, theme, navigation, utils
+├── features/        auth, home, search, property, blog, agent, profile, ...
+├── presentation/    main_shell (bottom nav)
+└── shared/          widgets, models
+```
+
+**Mobile test accounts:** user@realestate.com/user123, agent@realestate.com/agent123 (admin/blogger blocked on mobile).
+
+---
+
+## Cross-Platform Feature Matrix
+
+| Feature | Web (1G-Frontend) | Mobile (1G-Mobile) | Backend |
+|---------|-------------------|--------------------|---------|
+| Auth + JWT refresh | Yes | Yes | `/auth/**` |
+| Property search/detail | Yes | Yes | `/properties/**` |
+| Site visits + OTP | Yes | Yes | `/sitevisits/**`, `/agent/**` |
+| Watchlist/favorites | Toggle on detail | Dedicated tab | `/properties/*/watchlist` |
+| Blog read | Yes | Yes | `/blogs/published/**` |
+| Blog editor | Yes (BLOG role) | No | `/blogs/editor/**` |
+| Admin panel | Yes | No | `/admin/**` |
+| Homepage carousel | Yes | Yes | `/carousel/slides` |
+| FAQ chatbot floater | Yes (all pages) | Not yet | `/faq/**` |
+| SIP growth calculator | Yes (home) | Not yet | `/market-stats/**` |
+| Market stats admin | Yes | No | `/admin/market-stats/**` |
+| Indian price format | `IndianPricePipe` | Mobile formatter | — |
+| Media (YouTube/Drive) | embed + native | webview + resolver | URL stored as-is |
+
+---
+
+## Data & Integration Notes
+
+- **OTP:** MSG91 (not Twilio/Firebase in current direction); signup uses mobile OTP via `POST /auth/verify-signup`.
+- **Media:** Property media is URL-based on web; profile photo uses `POST /upload` on web. On mobile, profile photo is **device-local only** (gallery pick → app documents; no `/upload`). YouTube + Google Drive URL resolution in `image-url.util.ts` (web) and `media_url_resolver.dart` (mobile).
+- **Search gap:** Frontend state dropdown exists but `state` param is **not sent** to search API (only `city` and other filters).
+- **Market statistics:** Admin-managed primary source; optional RBI-style seed for major cities; public endpoints drive SIP calculator on home page.
+- **FAQ chatbot:** Keyword matching against admin FAQs; unmatched questions logged for admin; fallback: **"Just Missedcall on 9134913491, will help you!"**
 
 ---
 
@@ -304,4 +402,76 @@ Supporting operational docs:
 - **Verification:**
   - Backend build: `mvn -DskipTests package` succeeded
   - Frontend type-check: `npx tsc -p tsconfig.app.json --noEmit` succeeded
+
+### 2026-07-21 — Full workspace context scan (web + mobile)
+
+- Scanned all `.md` files under `1Guntha/` including newly cloned **`1G-Mobile/`** Flutter app.
+- Consolidated mobile context into this file: stack (Flutter/Riverpod/Dio/GoRouter), MVP scope, role policy (USER/AGENT only), caching, navigation, test accounts, build commands.
+- Documented three-codebase workspace map and cross-platform feature matrix.
+- No runtime code changed by this documentation action.
+
+### 2026-07-21 — FAQ chatbot (V13) + unmatched question admin
+
+- **Backend:**
+  - Flyway `V13__faqs.sql` — `faqs`, `unmatched_faq_questions` tables.
+  - `FaqService`, `FaqController` (public `/faq/**`), `AdminFaqController` (admin CRUD + resolve/promote unmatched).
+  - Keyword scoring match; unmatched questions stored with user (or Unknown).
+  - Fallback answer: **"Just Missedcall on 9134913491, will help you!"**
+  - `SecurityConfig` — `/faq/**` public; admin metrics include `unmatchedFaqPending`.
+- **Frontend:**
+  - `FaqChatbotComponent` — right-bottom floater on all pages via `app.component.ts`.
+  - Admin sections: Manage FAQs, Out-of-scope Questions (resolve/promote).
+  - Admin modal z-index raised above chatbot floater.
+
+### 2026-07-21 — Area-based SIP property growth calculator (V14 market stats)
+
+- **Backend:**
+  - Flyway `V14__market_statistics.sql` — `market_areas`, `market_stat_snapshots`, `market_data_refresh_runs`.
+  - Entities/repos/services: `MarketArea`, `MarketStatSnapshot`, `MarketStatsService`.
+  - Public: `GET /market-stats/areas`, `GET /market-stats`, `POST /market-stats/projection`.
+  - Admin: `/admin/market-stats/**` (area/snapshot CRUD, RBI-style seed import).
+  - `RbiHpiSeedProvider` — embedded free/open-style seed data (no paid API); `MarketStatsSeedRunner` auto-seeds on startup (non-test profile).
+  - Projection engine: CAGR from snapshots, historical + forecast lines.
+- **Frontend:**
+  - `MarketStatsService` + upgraded `property-growth-calculator.component.ts` on home page.
+  - State/City from `indian-locations.ts`; Location (LOCALITY) from backend admin catalog.
+  - Range tabs: YTD, 1Y, 3Y, 5Y, 10Y, MAX; SVG chart with history/forecast split.
+  - Admin: Market Statistics section (areas, snapshots, seed import).
+- **Tests:** `MarketStatsServiceTest`, `MarketStatsControllerTest`, calculator component spec (4/4 passed).
+
+### 2026-07-21 — Mobile local profile photo (device-only)
+
+- **Mobile (`1G-Mobile`):**
+  - Added `path_provider` and `LocalProfilePhotoService` — gallery pick copies image to `{appDocuments}/profile_photos/{userId}.jpg`; path stored in secure storage per user.
+  - `ProfileScreen` — no `POST /upload`; avatar priority: local file → server `profileImageUrl` → initials; remove deletes local file only; **Save profile** sends name/email only (no `profileImageUrl`).
+  - Local photos persist across logout/re-login on same device (scoped by `userId`).
+- **Tests:** `local_profile_photo_service_test.dart` (save/get/remove).
+- **Out of scope:** Backend/web profile photo flow unchanged; no sync to other devices.
+
+### 2026-07-21 — Admin push notifications (FCM) for mobile
+
+- **Backend (V15):** `device_tokens`, `push_campaigns` tables; `DeviceTokenController` (`POST/DELETE /devices/fcm-token`); `AdminPushNotificationController` (`POST/GET /admin/push-notifications`); `PushNotificationService` via Firebase Admin SDK (`FIREBASE_ENABLED`, `FIREBASE_CREDENTIALS_PATH`).
+- **Web admin:** Push Notifications (Mobile) section — title, message, image URL, link URL, in-app vs browser, target role (ALL/USER/AGENT), campaign history.
+- **Mobile:** `firebase_core`, `firebase_messaging`, `flutter_local_notifications`; token register on login, unregister on logout; tap routes to go_router or external browser.
+- **Docs:** `1G-Mobile/PUSH_NOTIFICATIONS_SETUP.md` — Firebase project, google-services.json, service account, testing steps.
+- **FCM cost:** Free for standard message delivery.
+
+### 2026-07-21 — Delete account (self-service + admin)
+
+- **Problem:** Users could not close their own accounts; admin delete lacked shared cleanup and last-admin protection.
+- **Backend:**
+  - `DELETE /users/me` — authenticated self-delete; body `{ "password": "..." }`; verifies password, clears refresh/device/email-verification tokens, deletes user and cascaded data; returns `204 No Content`. Admin role cannot self-delete.
+  - `DELETE /admin/users/{id}` — existing admin delete extended via `UserAccountDeletionService`; no password; blocks self-delete and deleting the last admin; returns `{ "deleted": true }`.
+  - New: `DeleteAccountRequest`, `UserAccountDeletionService`; `UserRepository.countByRole`, `DeviceTokenRepository.deleteByUserId`.
+- **Web:** Profile page “Delete account” danger card (non-admin) with password + confirm dialog; `AuthService.deleteAccount()`.
+- **Mobile:** Profile “Delete account” card with password + confirm dialog; `AuthRemoteDatasource.deleteAccount()` + repository clears session and local profile photo.
+- **Tests:** `UserAccountDeletionControllerTest`, `AdminUserDeletionControllerTest`.
+- **Migration:** None (existing FK cascades sufficient).
+- **Verification:** `mvn test` (new deletion tests).
+
+### 2026-07-21 — Unified 1Guntha brand logo (web + mobile)
+
+- Replaced `1G_logo.png` in `1G-Frontend/src/assets/images/` and `1G-Mobile/assets/images/` with the official vertical logo (roof + G/1 mark, 1GUNTHA.COM, Marathi tagline).
+- **Web:** `BrandLogoComponent` responsive variants (`compact`, `auth`, `footer`, `splash`) using `clamp()` / `min()` for header, auth, footer; favicon and apple-touch-icon updated in `index.html`.
+- **Mobile:** `AppLogo` height/width scaling by screen size; regenerated Android launcher + adaptive icons (`flutter_launcher_icons`, white adaptive background).
 

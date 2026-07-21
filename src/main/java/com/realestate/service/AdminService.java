@@ -36,6 +36,7 @@ public class AdminService {
     private final WatchlistRepository watchlistRepository;
     private final PaymentService paymentService;
     private final FaqService faqService;
+    private final UserAccountDeletionService userAccountDeletionService;
 
     public List<PropertyDto> getPendingProperties(int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "createdAt"));
@@ -161,7 +162,8 @@ public class AdminService {
         if (user.getId().equals(principal.getId())) {
             throw new BadRequestException("You cannot delete your own admin account.");
         }
-        userRepository.delete(user);
+        userAccountDeletionService.ensureNotLastAdmin(user);
+        userAccountDeletionService.deleteUser(user);
     }
 
     public com.realestate.dto.PageResponse<PropertyDto> getAllProperties(int page, int size, Boolean featuredOnly, Boolean newOnly) {

@@ -1,5 +1,6 @@
 package com.realestate.controller;
 
+import com.realestate.dto.DeleteAccountRequest;
 import com.realestate.dto.ProfileUpdateRequest;
 import com.realestate.dto.UserDto;
 import com.realestate.security.UserPrincipal;
@@ -34,5 +35,13 @@ public class UserController {
     public ResponseEntity<UserDto> updateMyProfile(@Valid @RequestBody ProfileUpdateRequest request,
                                                    @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(userService.updateProfile(principal.getId(), request, principal));
+    }
+
+    @DeleteMapping("/me")
+    @Operation(summary = "Delete the authenticated user's own account (password required)")
+    public ResponseEntity<Void> deleteMyAccount(@Valid @RequestBody DeleteAccountRequest request,
+                                                @AuthenticationPrincipal UserPrincipal principal) {
+        userService.deleteMyAccount(principal, request);
+        return ResponseEntity.noContent().build();
     }
 }
