@@ -17,4 +17,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = 'SUCCEEDED' AND p.createdAt >= :from AND p.createdAt <= :to")
     BigDecimal sumRevenueBetween(Instant from, Instant to);
+
+    void deleteByUserId(Long userId);
 }

@@ -126,10 +126,12 @@ public class MarketStatsService {
     public MarketStatSnapshotDto createSnapshot(MarketStatSnapshotCreateUpdateRequest req) {
         MarketArea area = areaRepository.findById(req.getMarketAreaId())
                 .orElseThrow(() -> new ResourceNotFoundException("MarketArea", req.getMarketAreaId()));
+        MarketStatSnapshot.Granularity granularity = parseGranularity(req.getGranularity());
+        ensureUniqueSnapshot(req.getMarketAreaId(), req.getSnapshotDate(), granularity, null);
         MarketStatSnapshot snap = MarketStatSnapshot.builder()
                 .marketArea(area)
                 .snapshotDate(req.getSnapshotDate())
-                .granularity(parseGranularity(req.getGranularity()))
+                .granularity(granularity)
                 .priceIndex(req.getPriceIndex())
                 .avgPricePerSqft(req.getAvgPricePerSqft())
                 .yoyGrowthPct(req.getYoyGrowthPct())
@@ -148,9 +150,11 @@ public class MarketStatsService {
                 .orElseThrow(() -> new ResourceNotFoundException("MarketStatSnapshot", id));
         MarketArea area = areaRepository.findById(req.getMarketAreaId())
                 .orElseThrow(() -> new ResourceNotFoundException("MarketArea", req.getMarketAreaId()));
+        MarketStatSnapshot.Granularity granularity = parseGranularity(req.getGranularity());
+        ensureUniqueSnapshot(req.getMarketAreaId(), req.getSnapshotDate(), granularity, id);
         snap.setMarketArea(area);
         snap.setSnapshotDate(req.getSnapshotDate());
-        snap.setGranularity(parseGranularity(req.getGranularity()));
+        snap.setGranularity(granularity);
         snap.setPriceIndex(req.getPriceIndex());
         snap.setAvgPricePerSqft(req.getAvgPricePerSqft());
         snap.setYoyGrowthPct(req.getYoyGrowthPct());
@@ -215,11 +219,7 @@ public class MarketStatsService {
         String normalizedRange = normalizeRange(range);
         LocalDate from = rangeStart(normalizedRange);
 
-        List<MarketStatSnapshot> snaps = snapshotRepository.findByAreaAndFromDate(areaId, from);
-        if (snaps.isEmpty() && area.getParent() != null) {
-            // fall back to parent city/state series when locality has no data
-            snaps = snapshotRepository.findByAreaAndFromDate(area.getParent().getId(), from);
-        }
+        List<MarketStatSnapshot> snaps = findSnapshotsWithParentFallback(areaId, from);
 
         if (snaps.isEmpty()) {
             return MarketStatsResponse.builder()
@@ -342,7 +342,16 @@ public class MarketStatsService {
                 ? areaRepository.findByLevelAndNameIgnoreCaseAndParentIsNull(level, name)
                 : areaRepository.findByLevelAndNameIgnoreCaseAndParentId(level, name, parent.getId());
         if (existing.isPresent()) {
-            return existing.get();
+            MarketArea area = existing.get();
+            area.setStateName(stateName);
+            if (level != MarketArea.Level.STATE) {
+                area.setCityName(cityName);
+            }
+            area.setStateSlug(slugify(stateName));
+            area.setCitySlug(level == MarketArea.Level.STATE ? null : slugify(cityName));
+            area.setLocationSlug(level == MarketArea.Level.LOCALITY ? slugify(name) : null);
+            area.setActive(true);
+            return areaRepository.save(area);
         }
         MarketArea area = MarketArea.builder()
                 .parent(parent)
@@ -494,5 +503,32 @@ public class MarketStatsService {
 
     private static String blankToNull(String s) {
         return StringUtils.hasText(s) ? s.trim() : null;
+    }
+
+    private List<MarketStatSnapshot> findSnapshotsWithParentFallback(Long areaId, LocalDate from) {
+        List<MarketStatSnapshot> snaps = snapshotRepository.findByAreaAndFromDate(areaId, from);
+        Long fallbackId = areaRepository.findById(areaId)
+                .map(MarketArea::getParent)
+                .map(MarketArea::getId)
+                .orElse(null);
+        while (snaps.isEmpty() && fallbackId != null) {
+            snaps = snapshotRepository.findByAreaAndFromDate(fallbackId, from);
+            if (snaps.isEmpty()) {
+                fallbackId = areaRepository.findById(fallbackId)
+                        .map(MarketArea::getParent)
+                        .map(MarketArea::getId)
+                        .orElse(null);
+            }
+        }
+        return snaps;
+    }
+
+    private void ensureUniqueSnapshot(Long areaId, LocalDate date,
+                                      MarketStatSnapshot.Granularity granularity, Long excludeId) {
+        var existing = snapshotRepository.findByMarketAreaIdAndSnapshotDateAndGranularity(areaId, date, granularity);
+        if (existing.isPresent() && (excludeId == null || !existing.get().getId().equals(excludeId))) {
+            throw new BadRequestException(
+                    "A snapshot already exists for this area on " + date + " (" + granularity + "). Edit the existing row instead.");
+        }
     }
 }

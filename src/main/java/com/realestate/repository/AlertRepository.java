@@ -12,4 +12,6 @@ public interface AlertRepository extends JpaRepository<Alert, Long> {
     Page<Alert> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
     long countByUserIdAndReadFalse(Long userId);
+
+    void deleteByUserId(Long userId);
 }

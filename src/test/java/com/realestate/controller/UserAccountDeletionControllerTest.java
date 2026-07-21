@@ -2,7 +2,10 @@ package com.realestate.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.realestate.dto.DeleteAccountRequest;
+import com.realestate.entity.Property;
+import com.realestate.entity.PropertyImage;
 import com.realestate.entity.User;
+import com.realestate.repository.PropertyRepository;
 import com.realestate.repository.UserRepository;
 import com.realestate.security.JwtUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +18,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,6 +35,7 @@ class UserAccountDeletionControllerTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private UserRepository userRepository;
+    @Autowired private PropertyRepository propertyRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtUtils jwtUtils;
 
@@ -114,5 +120,39 @@ class UserAccountDeletionControllerTest {
                 .andExpect(status().isBadRequest());
 
         assertFalse(userRepository.findById(admin.getId()).isEmpty());
+    }
+
+    @Test
+    void deleteMyAccount_withOwnedProperty_deletesUserAndProperty() throws Exception {
+        Property property = Property.builder()
+                .title("User Owned Listing")
+                .description("Deleted with account")
+                .listingType(Property.ListingType.RENT)
+                .propertyType(Property.PropertyType.HOUSE)
+                .price(BigDecimal.valueOf(25_000))
+                .address("99 Account Delete Rd")
+                .city("Mumbai")
+                .status(Property.PropertyStatus.APPROVED)
+                .owner(user)
+                .build();
+        property.getImages().add(PropertyImage.builder()
+                .property(property)
+                .imageUrl("https://example.com/home.jpg")
+                .displayOrder(0)
+                .build());
+        property = propertyRepository.save(property);
+        Long propertyId = property.getId();
+
+        DeleteAccountRequest request = new DeleteAccountRequest();
+        request.setPassword("correctPass");
+
+        mockMvc.perform(delete("/users/me")
+                        .header("Authorization", "Bearer " + userToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNoContent());
+
+        assertFalse(userRepository.findById(user.getId()).isPresent());
+        assertFalse(propertyRepository.findById(propertyId).isPresent());
     }
 }

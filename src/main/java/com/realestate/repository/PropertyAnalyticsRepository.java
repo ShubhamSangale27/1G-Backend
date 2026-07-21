@@ -25,4 +25,6 @@ public interface PropertyAnalyticsRepository extends JpaRepository<PropertyAnaly
     List<Object[]> aggregateByPropertyAndType(@Param("from") Instant from, @Param("to") Instant to);
 
     List<PropertyAnalytics> findByPropertyIdAndTypeOrderByRecordedAtDesc(Long propertyId, PropertyAnalytics.AnalyticsType type, Pageable pageable);
+
+    void deleteByPropertyId(Long propertyId);
 }

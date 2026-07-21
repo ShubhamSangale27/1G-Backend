@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-07-21 (delete account — self-service + admin hardening)
+Last updated: 2026-07-21 (market stats admin + cross-stack production hardening)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
 
@@ -474,4 +474,27 @@ Mobile docs (under `1G-Mobile/`):
 - Replaced `1G_logo.png` in `1G-Frontend/src/assets/images/` and `1G-Mobile/assets/images/` with the official vertical logo (roof + G/1 mark, 1GUNTHA.COM, Marathi tagline).
 - **Web:** `BrandLogoComponent` responsive variants (`compact`, `auth`, `footer`, `splash`) using `clamp()` / `min()` for header, auth, footer; favicon and apple-touch-icon updated in `index.html`.
 - **Mobile:** `AppLogo` height/width scaling by screen size; regenerated Android launcher + adaptive icons (`flutter_launcher_icons`, white adaptive background).
+
+### 2026-07-21 — Account delete: owned properties and associated data
+
+- **Problem:** Deleting a user who owned listed properties caused FK/SQL errors because JPA does not cascade-delete uninitialized lazy collections (`User.properties`, `Property.siteVisits`, etc.).
+- **Backend:**
+  - Expanded `UserAccountDeletionService` with explicit ordered deletion: owned properties (and each property’s site-visit comments, OTPs, site visits, watchlist entries, images, analytics) → remaining user-scoped rows (comments, site visits, agent assignments cleared, watchlist, alerts, payments, blog posts) → tokens → user.
+  - New repository bulk methods: `PropertyRepository.findAllByOwnerId`, `SiteVisitRepository.deleteByPropertyId`, `WatchlistRepository.deleteByPropertyId`, `PropertyAnalyticsRepository.deleteByPropertyId`, `SiteVisitCommentRepository.deleteBySiteVisitPropertyId`, `VisitOTPRepository.deleteBySiteVisitPropertyId`, plus existing `deleteByUserId` / `deleteByAuthorId` helpers.
+  - `SiteVisit` entity: `@OneToMany(cascade = ALL, orphanRemoval = true)` on `comments` for JPA consistency.
+- **Tests:** `UserAccountDeletionServiceTest.deleteUser_withOwnedPropertyAndDependents_removesAllRows`, `UserAccountDeletionControllerTest.deleteMyAccount_withOwnedProperty_deletesUserAndProperty`.
+- **Migration:** None (application-layer fix; existing schema FK rules unchanged).
+- **Verification:** `mvn test "-Dtest=UserAccountDeletionServiceTest,UserAccountDeletionControllerTest,AdminUserDeletionControllerTest"` — 11/11 passed.
+
+### 2026-07-21 — Market statistics admin fixes + production hardening
+
+- **Problem:** Admin panel location/statistics updates appeared not to persist or reflect on the public growth calculator; parent ID was a raw number (easy misconfiguration); calculator used static `indian-locations.ts` while admin edits DB areas; duplicate snapshot dates caused opaque 500 errors; mobile had truncated location list and silent dashboard failures.
+- **Backend:**
+  - `MarketStatsService` — multi-level snapshot fallback (locality → city → state); duplicate snapshot guard with clear `BadRequestException`; RBI seed re-import now refreshes existing area metadata.
+  - `GlobalExceptionHandler` — friendly message for `DataIntegrityViolationException` on snapshot conflicts.
+- **Web admin:** Parent dropdown (STATE/CITY filtered by level), auto-filled state/city names, sort order field, active checkbox hint, snapshot panel shows area name, validation before save.
+- **Web calculator:** State/city lists loaded from `/market-stats/areas` API (admin data is source of truth) with static fallback when API empty.
+- **Mobile:** Synced `indian_locations.dart` to full 36-state web dataset via `scripts/sync-indian-locations.js`; dashboard shows `ErrorView` + retry on load failures instead of silent catch.
+- **Verification:** `mvn test MarketStatsServiceTest,MarketStatsControllerTest`; Angular growth calculator spec 4/4; Flutter 30/30.
+- **Follow-up:** Mobile property growth projector widget not yet ported (web-only today); admin market-stats CRUD remains web-only by design.
 

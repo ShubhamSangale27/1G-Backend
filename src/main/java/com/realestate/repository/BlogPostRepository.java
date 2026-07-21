@@ -27,4 +27,6 @@ public interface BlogPostRepository extends JpaRepository<BlogPost, Long> {
 
     @Query("SELECT p.tags FROM BlogPost p WHERE p.published = true AND p.tags IS NOT NULL AND p.tags <> ''")
     List<String> findPublishedTagStrings();
+
+    void deleteByAuthorId(Long authorId);
 }

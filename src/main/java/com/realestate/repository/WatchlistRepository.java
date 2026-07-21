@@ -21,4 +21,8 @@ public interface WatchlistRepository extends JpaRepository<Watchlist, Long> {
     boolean existsByUserIdAndPropertyId(Long userId, Long propertyId);
 
     void deleteByUserIdAndPropertyId(Long userId, Long propertyId);
+
+    void deleteByUserId(Long userId);
+
+    void deleteByPropertyId(Long propertyId);
 }

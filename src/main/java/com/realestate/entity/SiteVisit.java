@@ -6,6 +6,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "site_visits")
@@ -44,6 +46,10 @@ public class SiteVisit {
 
     @OneToOne(mappedBy = "siteVisit", cascade = CascadeType.ALL, orphanRemoval = true)
     private VisitOTP visitOTP;
+
+    @OneToMany(mappedBy = "siteVisit", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<SiteVisitComment> comments = new ArrayList<>();
 
     @CreationTimestamp
     private Instant createdAt;

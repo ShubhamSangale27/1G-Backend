@@ -28,6 +28,8 @@ public interface PropertyRepository extends JpaRepository<Property, Long>, JpaSp
 
     Page<Property> findByOwnerId(Long ownerId, Pageable pageable);
 
+    List<Property> findAllByOwnerId(Long ownerId);
+
     Page<Property> findByFeatured(Boolean featured, Pageable pageable);
 
     Page<Property> findByCreatedAtAfterOrderByCreatedAtDesc(Instant after, Pageable pageable);

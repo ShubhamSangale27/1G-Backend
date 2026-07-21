@@ -41,4 +41,12 @@ public interface SiteVisitRepository extends JpaRepository<SiteVisit, Long> {
             "ORDER BY CASE WHEN sv.status = 'COMPLETED' THEN 2 WHEN sv.scheduledAt >= :now THEN 0 ELSE 1 END, " +
             "CASE WHEN sv.status = 'COMPLETED' THEN sv.scheduledAt END DESC, sv.scheduledAt ASC")
     Page<SiteVisit> findByAgentIdUpcomingFirst(@Param("agentId") Long agentId, @Param("now") Instant now, Pageable pageable);
+
+    void deleteByUserId(Long userId);
+
+    void deleteByPropertyId(Long propertyId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE SiteVisit sv SET sv.agent = NULL WHERE sv.agent.id = :agentId")
+    void clearAgentAssignments(@Param("agentId") Long agentId);
 }

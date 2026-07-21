@@ -1,6 +1,7 @@
 package com.realestate.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -30,6 +31,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "error", "Bad Request",
                 "message", e.getMessage()
+        ));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException e) {
+        log.warn("Data integrity violation: {}", e.getMessage());
+        String message = "This change conflicts with existing data (duplicate or linked record).";
+        if (e.getMessage() != null && e.getMessage().contains("market_stat_snapshots")) {
+            message = "A snapshot already exists for this area, date, and granularity.";
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", "Bad Request",
+                "message", message
         ));
     }
 
