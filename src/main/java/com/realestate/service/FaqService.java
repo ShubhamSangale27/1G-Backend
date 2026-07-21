@@ -177,22 +177,12 @@ public class FaqService {
     }
 
     private FaqAskResponse buildFallbackResponse() {
-        StringBuilder sb = new StringBuilder(
-                "Sorry, I don't have an answer for that. Please contact us at ");
-        sb.append(supportEmail);
-        if (supportWebsite != null && !supportWebsite.isBlank()) {
-            sb.append(" or visit ").append(supportWebsite);
-        }
-        if (supportPhone != null && !supportPhone.isBlank()) {
-            sb.append(", or call ").append(supportPhone);
-        }
-        sb.append(".");
         return FaqAskResponse.builder()
                 .matched(false)
-                .answer(sb.toString())
+                .answer("Just Missedcall on 9134913491, will help you!")
                 .contactEmail(supportEmail)
                 .contactWebsite(blankToNull(supportWebsite))
-                .contactPhone(blankToNull(supportPhone))
+                .contactPhone("9134913491")
                 .build();
     }
 

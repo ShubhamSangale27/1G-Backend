@@ -51,6 +51,8 @@ public class SecurityConfig {
             "/plans",
             "/faq",
             "/faq/**",
+            "/market-stats",
+            "/market-stats/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"
