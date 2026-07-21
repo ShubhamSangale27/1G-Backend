@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-07-21 (market stats admin + cross-stack production hardening)
+Last updated: 2026-07-21 (Devanagari logo rendering — composite lockup web + mobile)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
 
@@ -497,4 +497,13 @@ Mobile docs (under `1G-Mobile/`):
 - **Mobile:** Synced `indian_locations.dart` to full 36-state web dataset via `scripts/sync-indian-locations.js`; dashboard shows `ErrorView` + retry on load failures instead of silent catch.
 - **Verification:** `mvn test MarketStatsServiceTest,MarketStatsControllerTest`; Angular growth calculator spec 4/4; Flutter 30/30.
 - **Follow-up:** Mobile property growth projector widget not yet ported (web-only today); admin market-stats CRUD remains web-only by design.
+
+### 2026-07-21 — Devanagari logo rendering (web + mobile)
+
+- **Problem:** Logo PNG had black background and embedded Devanagari tagline that became illegible when scaled down in headers (28–36px).
+- **Solution:** Composite brand lockup — transparent `1G_logo_lockup.png` (icon + wordmark) + live Devanagari text **घर प्रत्येकासाठी** via Noto Sans Devanagari; enlarged compact/header sizes.
+- **Assets:** `scripts/prepare-brand-logo.ps1` generates `1G_logo_full.png`, `1G_logo_lockup.png` (+@2x/@3x), `1G_logo_mark.png` for favicon/launcher.
+- **Web:** `BrandLogoComponent` stacked lockup; `index.html` Noto Sans Devanagari font + mark favicon; header min-height increased.
+- **Mobile:** `AppLogo` Column with lockup + tagline; `SliverAppBar` toolbarHeight 72; launcher icons use mark-only crop.
+- **Verification:** Flutter branding + app_logo + widget tests passed; launcher icons regenerated.
 
