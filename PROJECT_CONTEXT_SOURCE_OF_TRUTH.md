@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-07-21 (Devanagari logo rendering — composite lockup web + mobile)
+Last updated: 2026-07-21 (launcher icon fix + release APK/AAB)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
 
@@ -506,4 +506,12 @@ Mobile docs (under `1G-Mobile/`):
 - **Web:** `BrandLogoComponent` stacked lockup; `index.html` Noto Sans Devanagari font + mark favicon; header min-height increased.
 - **Mobile:** `AppLogo` Column with lockup + tagline; `SliverAppBar` toolbarHeight 72; launcher icons use mark-only crop.
 - **Verification:** Flutter branding + app_logo + widget tests passed; launcher icons regenerated.
+
+### 2026-07-21 — Launcher icon fix + release builds
+
+- **Problem:** Android home-screen launcher icon looked flooded (included wordmark text); in-app header logo could overflow on small screens.
+- **Fix:** New `1G_logo_icon.png` — square 1024px canvas with icon-only crop (44% height) centered at 68% scale; launcher uses this asset with adaptive inset 0% (padding baked into PNG).
+- **In-app:** `AppLogo` compact size reduced; wrapped in `FittedBox`; home `SliverAppBar` toolbarHeight 64.
+- **Script:** `prepare-brand-logo.ps1` generates `1G_logo_icon.png`.
+- **Builds:** Release APK and AAB built (debug signing — no `android/key.properties` on machine).
 
