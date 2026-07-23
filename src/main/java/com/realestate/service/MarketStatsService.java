@@ -33,7 +33,6 @@ import java.util.stream.Collectors;
 public class MarketStatsService {
 
     private static final MathContext MC = new MathContext(12, RoundingMode.HALF_UP);
-    private static final BigDecimal DEFAULT_CAGR = new BigDecimal("8.5");
 
     private final MarketAreaRepository areaRepository;
     private final MarketStatSnapshotRepository snapshotRepository;
@@ -300,15 +299,18 @@ public class MarketStatsService {
 
     private MarketStatsResponse buildStatsFromSnapshots(MarketArea area, List<MarketStatSnapshot> snaps,
                                                         String normalizedRange, BigDecimal benchmarkFallback) {
+        snaps = sortSnapshots(snaps);
         MarketStatSnapshot first = snaps.get(0);
         MarketStatSnapshot last = snaps.get(snaps.size() - 1);
         BigDecimal regionalRate = deriveRegionalRateFromSnapshots(snaps, benchmarkFallback);
-        BigDecimal rangeReturn = percentChange(first.getPriceIndex(), last.getPriceIndex());
+        BigDecimal firstIdx = effectiveIndex(first, snaps);
+        BigDecimal lastIdx = effectiveIndex(last, snaps);
+        BigDecimal rangeReturn = percentChange(firstIdx, lastIdx);
 
         List<MarketStatsResponse.HistoryPoint> history = snaps.stream()
                 .map(s -> MarketStatsResponse.HistoryPoint.builder()
                         .date(s.getSnapshotDate())
-                        .index(s.getPriceIndex())
+                        .index(effectiveIndex(s, snaps))
                         .avgPricePerSqft(s.getAvgPricePerSqft())
                         .yoyGrowthPct(s.getYoyGrowthPct())
                         .build())
@@ -320,7 +322,7 @@ public class MarketStatsService {
                 .dataAvailable(true)
                 .message("Based on " + snaps.size() + " admin snapshot(s) from "
                         + first.getSnapshotDate() + " to " + last.getSnapshotDate() + ".")
-                .latestIndex(last.getPriceIndex())
+                .latestIndex(lastIdx)
                 .latestAvgPricePerSqft(last.getAvgPricePerSqft())
                 .latestRentalYieldPct(last.getRentalYieldPct())
                 .rangeReturnPct(rangeReturn)
@@ -465,11 +467,11 @@ public class MarketStatsService {
     static BigDecimal computeCagr(BigDecimal start, BigDecimal end, LocalDate from, LocalDate to) {
         if (start == null || end == null || start.compareTo(BigDecimal.ZERO) <= 0
                 || end.compareTo(BigDecimal.ZERO) <= 0 || from == null || to == null) {
-            return DEFAULT_CAGR;
+            return null;
         }
         double years = ChronoUnit.DAYS.between(from, to) / 365.25;
         if (years < 0.25) {
-            return DEFAULT_CAGR;
+            return null;
         }
         double cagr = (Math.pow(end.doubleValue() / start.doubleValue(), 1.0 / years) - 1.0) * 100.0;
         return BigDecimal.valueOf(cagr).setScale(2, RoundingMode.HALF_UP);
@@ -749,15 +751,16 @@ public class MarketStatsService {
         if (snaps == null || snaps.isEmpty()) {
             return benchmarkFallback;
         }
+        snaps = sortSnapshots(snaps);
         if (snaps.size() >= 2) {
             MarketStatSnapshot first = snaps.get(0);
             MarketStatSnapshot last = snaps.get(snaps.size() - 1);
             BigDecimal cagr = computeCagr(
-                    first.getPriceIndex(),
-                    last.getPriceIndex(),
+                    effectiveIndex(first, snaps),
+                    effectiveIndex(last, snaps),
                     first.getSnapshotDate(),
                     last.getSnapshotDate());
-            if (cagr != null && cagr.compareTo(DEFAULT_CAGR) != 0) {
+            if (cagr != null && cagr.compareTo(BigDecimal.ZERO) != 0) {
                 return cagr;
             }
         }
@@ -776,7 +779,7 @@ public class MarketStatsService {
             BigDecimal regionalRate,
             int horizonYears) {
         snaps = sortSnapshots(snaps);
-        BigDecimal baseIndex = snaps.get(0).getPriceIndex();
+        BigDecimal baseIndex = effectiveIndex(snaps.get(0), snaps);
         LocalDate firstDate = snaps.get(0).getSnapshotDate();
         LocalDate lastDate = snaps.get(snaps.size() - 1).getSnapshotDate();
         double spanYears = Math.max(0.25, ChronoUnit.DAYS.between(firstDate, lastDate) / 365.25);
@@ -788,7 +791,7 @@ public class MarketStatsService {
             double offsetYears = ChronoUnit.DAYS.between(firstDate, snap.getSnapshotDate()) / 365.25;
             int year = (int) Math.round(offsetYears * scale);
             year = Math.max(0, Math.min(year, horizonYears));
-            BigDecimal regional = initial.multiply(snap.getPriceIndex(), MC).divide(baseIndex, MC)
+            BigDecimal regional = initial.multiply(effectiveIndex(snap, snaps), MC).divide(baseIndex, MC)
                     .setScale(2, RoundingMode.HALF_UP);
             BigDecimal user = portfolioFuture(initial, monthly, userRate, year);
             pointsByYear.put(year, MarketProjectionResponse.ProjectionPoint.builder()
@@ -820,6 +823,51 @@ public class MarketStatsService {
                     .build());
         }
         return new ArrayList<>(pointsByYear.values());
+    }
+
+    /**
+     * When admin snapshots keep the default price index (100) but supply avg ₹/sqft,
+     * derive a normalized index from the first snapshot's price so CAGR and charts reflect real growth.
+     */
+    private static BigDecimal effectiveIndex(MarketStatSnapshot snap, List<MarketStatSnapshot> snaps) {
+        if (snap == null) {
+            return BigDecimal.ZERO;
+        }
+        if (snaps != null && !snaps.isEmpty() && !priceIndicesAreInformative(snaps)) {
+            BigDecimal baselinePsf = baselineAvgPricePerSqft(snaps);
+            if (baselinePsf != null
+                    && snap.getAvgPricePerSqft() != null
+                    && snap.getAvgPricePerSqft().compareTo(BigDecimal.ZERO) > 0) {
+                return snap.getAvgPricePerSqft()
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(baselinePsf, 4, RoundingMode.HALF_UP);
+            }
+        }
+        return snap.getPriceIndex() != null ? snap.getPriceIndex() : BigDecimal.ZERO;
+    }
+
+    private static boolean priceIndicesAreInformative(List<MarketStatSnapshot> snaps) {
+        BigDecimal first = null;
+        for (MarketStatSnapshot s : snaps) {
+            if (s.getPriceIndex() == null) {
+                continue;
+            }
+            if (first == null) {
+                first = s.getPriceIndex();
+            } else if (s.getPriceIndex().compareTo(first) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static BigDecimal baselineAvgPricePerSqft(List<MarketStatSnapshot> snaps) {
+        for (MarketStatSnapshot s : snaps) {
+            if (s.getAvgPricePerSqft() != null && s.getAvgPricePerSqft().compareTo(BigDecimal.ZERO) > 0) {
+                return s.getAvgPricePerSqft();
+            }
+        }
+        return null;
     }
 
     private void ensureUniqueSnapshot(Long areaId, LocalDate date,

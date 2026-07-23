@@ -144,6 +144,59 @@ class MarketStatsServiceTest {
     }
 
     @Test
+    void project_withFlatIndexAndPsf_usesPsfGrowthNotBenchmark() {
+        when(areaRepository.findById(3L)).thenReturn(Optional.of(locality));
+        MarketStatSnapshot s1 = MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2021, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("70"))
+                .yoyGrowthPct(new BigDecimal("10"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build();
+        MarketStatSnapshot s2 = MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2023, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("100"))
+                .yoyGrowthPct(new BigDecimal("30"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build();
+        MarketStatSnapshot s3 = MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2025, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("130"))
+                .yoyGrowthPct(new BigDecimal("30"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build();
+        when(snapshotRepository.findByAreaAndFromDate(eq(3L), ArgumentMatchers.any()))
+                .thenReturn(List.of(s1, s2, s3));
+        when(benchmarkRates.forCity("Maharashtra", "Mumbai")).thenReturn(new BigDecimal("7.2"));
+
+        MarketProjectionResponse res = service.project(MarketProjectionRequest.builder()
+                .state("Maharashtra")
+                .city("Mumbai")
+                .localityId(3L)
+                .range("MAX")
+                .initialAmount(new BigDecimal("1000000"))
+                .monthlyContribution(BigDecimal.ZERO)
+                .years(10)
+                .build());
+
+        assertTrue(res.getRegionalRatePct().doubleValue() > 14.0);
+        assertTrue(res.getRegionalRatePct().doubleValue() < 18.0);
+        assertNotEquals(new BigDecimal("8.5"), res.getRegionalRatePct());
+        assertTrue(res.getMarket().isDataAvailable());
+        assertTrue(res.getRegionalFinal().compareTo(new BigDecimal("1000000")) > 0);
+        assertTrue(res.getPoints().stream().anyMatch(p -> !p.isForecast()
+                && p.getRegional().compareTo(new BigDecimal("1000000")) > 0));
+    }
+
+    @Test
     void computeCagr_knownValues() {
         BigDecimal cagr = MarketStatsService.computeCagr(
                 new BigDecimal("100"),

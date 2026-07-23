@@ -275,6 +275,99 @@ class MarketStatsControllerTest {
     }
 
     @Test
+    void projection_flatPriceIndexWithPsfAndYoy_derivesCagrFromPsfNotBenchmark() throws Exception {
+        snapshotRepository.deleteAll();
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2021, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("70"))
+                .yoyGrowthPct(new BigDecimal("10"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2023, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("100"))
+                .yoyGrowthPct(new BigDecimal("30"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2025, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("130"))
+                .yoyGrowthPct(new BigDecimal("30"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+
+        MarketProjectionRequest body = MarketProjectionRequest.builder()
+                .state("Maharashtra")
+                .city("Mumbai")
+                .localityId(locality.getId())
+                .range("MAX")
+                .initialAmount(new BigDecimal("1000000"))
+                .monthlyContribution(BigDecimal.ZERO)
+                .years(10)
+                .build();
+
+        mockMvc.perform(post("/market-stats/projection")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.market.dataAvailable").value(true))
+                .andExpect(jsonPath("$.regionalRatePct").value(closeTo(15.97, 0.5)))
+                .andExpect(jsonPath("$.regionalRatePct").value(not(8.5)))
+                .andExpect(jsonPath("$.points[0].regional").value(1000000))
+                .andExpect(jsonPath("$.regionalFinal").value(greaterThan(1000000.0)));
+    }
+
+    @Test
+    void getStats_flatPriceIndexWithPsf_derivesCagrFromPsf() throws Exception {
+        snapshotRepository.deleteAll();
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2021, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("70"))
+                .yoyGrowthPct(new BigDecimal("10"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2023, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("100"))
+                .yoyGrowthPct(new BigDecimal("30"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2025, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("130"))
+                .yoyGrowthPct(new BigDecimal("30"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+
+        mockMvc.perform(get("/market-stats")
+                        .param("areaId", String.valueOf(locality.getId()))
+                        .param("range", "MAX"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dataAvailable").value(true))
+                .andExpect(jsonPath("$.derivedCagrPct").value(closeTo(15.97, 0.5)))
+                .andExpect(jsonPath("$.rangeReturnPct").value(closeTo(85.71, 0.5)))
+                .andExpect(jsonPath("$.history", hasSize(3)));
+    }
+
+    @Test
     void projection_returnsLines() throws Exception {
         MarketProjectionRequest body = MarketProjectionRequest.builder()
                 .state("Maharashtra")
