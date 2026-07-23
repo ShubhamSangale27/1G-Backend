@@ -317,18 +317,18 @@ public class MarketStatsService {
 
     private MarketStatsResponse buildStatsFromSnapshots(MarketArea area, List<MarketStatSnapshot> snaps,
                                                         String normalizedRange, BigDecimal benchmarkFallback) {
-        snaps = sortSnapshots(snaps);
-        MarketStatSnapshot first = snaps.get(0);
-        MarketStatSnapshot last = snaps.get(snaps.size() - 1);
-        BigDecimal regionalRate = deriveRegionalRateFromSnapshots(snaps, benchmarkFallback);
-        BigDecimal firstIdx = effectiveIndex(first, snaps);
-        BigDecimal lastIdx = effectiveIndex(last, snaps);
+        List<MarketStatSnapshot> sortedSnaps = sortSnapshots(snaps);
+        MarketStatSnapshot first = sortedSnaps.get(0);
+        MarketStatSnapshot last = sortedSnaps.get(sortedSnaps.size() - 1);
+        BigDecimal regionalRate = deriveRegionalRateFromSnapshots(sortedSnaps, benchmarkFallback);
+        BigDecimal firstIdx = effectiveIndex(first, sortedSnaps);
+        BigDecimal lastIdx = effectiveIndex(last, sortedSnaps);
         BigDecimal rangeReturn = percentChange(firstIdx, lastIdx);
 
-        List<MarketStatsResponse.HistoryPoint> history = snaps.stream()
+        List<MarketStatsResponse.HistoryPoint> history = sortedSnaps.stream()
                 .map(s -> MarketStatsResponse.HistoryPoint.builder()
                         .date(s.getSnapshotDate())
-                        .index(effectiveIndex(s, snaps))
+                        .index(effectiveIndex(s, sortedSnaps))
                         .avgPricePerSqft(s.getAvgPricePerSqft())
                         .yoyGrowthPct(s.getYoyGrowthPct())
                         .build())
@@ -338,7 +338,7 @@ public class MarketStatsService {
                 .area(MarketAreaDto.from(area))
                 .range(normalizedRange)
                 .dataAvailable(true)
-                .message("Based on " + snaps.size() + " admin snapshot(s) from "
+                .message("Based on " + sortedSnaps.size() + " admin snapshot(s) from "
                         + first.getSnapshotDate() + " to " + last.getSnapshotDate() + ".")
                 .latestIndex(lastIdx)
                 .latestAvgPricePerSqft(last.getAvgPricePerSqft())
@@ -777,20 +777,20 @@ public class MarketStatsService {
         if (snaps == null || snaps.isEmpty()) {
             return benchmarkFallback;
         }
-        snaps = sortSnapshots(snaps);
-        if (snaps.size() >= 2) {
-            MarketStatSnapshot first = snaps.get(0);
-            MarketStatSnapshot last = snaps.get(snaps.size() - 1);
+        List<MarketStatSnapshot> sortedSnaps = sortSnapshots(snaps);
+        if (sortedSnaps.size() >= 2) {
+            MarketStatSnapshot first = sortedSnaps.get(0);
+            MarketStatSnapshot last = sortedSnaps.get(sortedSnaps.size() - 1);
             BigDecimal cagr = computeCagr(
-                    effectiveIndex(first, snaps),
-                    effectiveIndex(last, snaps),
+                    effectiveIndex(first, sortedSnaps),
+                    effectiveIndex(last, sortedSnaps),
                     first.getSnapshotDate(),
                     last.getSnapshotDate());
             if (cagr != null && cagr.compareTo(BigDecimal.ZERO) != 0) {
                 return cagr;
             }
         }
-        BigDecimal avgYoy = averageDecimal(snaps.stream().map(MarketStatSnapshot::getYoyGrowthPct).toList());
+        BigDecimal avgYoy = averageDecimal(sortedSnaps.stream().map(MarketStatSnapshot::getYoyGrowthPct).toList());
         if (avgYoy != null) {
             return avgYoy.setScale(2, RoundingMode.HALF_UP);
         }
@@ -804,10 +804,10 @@ public class MarketStatsService {
             BigDecimal userRate,
             BigDecimal regionalRate,
             int horizonYears) {
-        snaps = sortSnapshots(snaps);
-        BigDecimal baseIndex = effectiveIndex(snaps.get(0), snaps);
-        LocalDate firstDate = snaps.get(0).getSnapshotDate();
-        LocalDate lastDate = snaps.get(snaps.size() - 1).getSnapshotDate();
+        List<MarketStatSnapshot> sortedSnaps = sortSnapshots(snaps);
+        BigDecimal baseIndex = effectiveIndex(sortedSnaps.get(0), sortedSnaps);
+        LocalDate firstDate = sortedSnaps.get(0).getSnapshotDate();
+        LocalDate lastDate = sortedSnaps.get(sortedSnaps.size() - 1).getSnapshotDate();
         double spanYears = Math.max(0.25, ChronoUnit.DAYS.between(firstDate, lastDate) / 365.25);
         double histCap = Math.min(spanYears, horizonYears);
         double scale = spanYears > histCap ? histCap / spanYears : 1.0;
@@ -819,11 +819,11 @@ public class MarketStatsService {
                 .user(portfolioFuture(initial, monthly, userRate, 0))
                 .forecast(false)
                 .build());
-        for (MarketStatSnapshot snap : snaps) {
+        for (MarketStatSnapshot snap : sortedSnaps) {
             double offsetYears = ChronoUnit.DAYS.between(firstDate, snap.getSnapshotDate()) / 365.25;
             int year = (int) Math.round(offsetYears * scale);
             year = Math.max(0, Math.min(year, horizonYears));
-            BigDecimal regional = initial.multiply(effectiveIndex(snap, snaps), MC).divide(baseIndex, MC)
+            BigDecimal regional = initial.multiply(effectiveIndex(snap, sortedSnaps), MC).divide(baseIndex, MC)
                     .setScale(2, RoundingMode.HALF_UP);
             BigDecimal user = portfolioFuture(initial, monthly, userRate, year);
             pointsByYear.put(year, MarketProjectionResponse.ProjectionPoint.builder()
