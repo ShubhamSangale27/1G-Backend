@@ -71,7 +71,9 @@ public class PushNotificationService {
                     .campaignId(campaign.getId())
                     .sentCount(0)
                     .failedCount(tokens.size())
-                    .message("Campaign saved. Configure Firebase (FIREBASE_ENABLED=true + FIREBASE_CREDENTIALS_PATH) to deliver push notifications.")
+                    .message("Campaign saved. Configure Firebase (FIREBASE_ENABLED=true and "
+                            + "FIREBASE_CREDENTIALS_JSON, FIREBASE_CREDENTIALS_BASE64, or FIREBASE_CREDENTIALS_PATH) "
+                            + "to deliver push notifications.")
                     .build();
         }
 

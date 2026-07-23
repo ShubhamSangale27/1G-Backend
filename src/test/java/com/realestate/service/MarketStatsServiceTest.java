@@ -138,4 +138,72 @@ class MarketStatsServiceTest {
         MarketStatsResponse res = service.getStats(3L, "bogus");
         assertEquals("5Y", res.getRange());
     }
+
+    @Test
+    void listAreas_delegatesToRepositoryWithParentId() {
+        MarketArea city = MarketArea.builder()
+                .id(2L)
+                .level(MarketArea.Level.CITY)
+                .name("Mumbai")
+                .stateName("Maharashtra")
+                .cityName("Mumbai")
+                .active(true)
+                .build();
+        when(areaRepository.findFiltered(1L, null, null, MarketArea.Level.CITY))
+                .thenReturn(List.of(city));
+
+        var result = service.listAreas(1L, null, null, "CITY");
+
+        assertEquals(1, result.size());
+        assertEquals("Mumbai", result.get(0).getName());
+        verify(areaRepository).findFiltered(1L, null, null, MarketArea.Level.CITY);
+    }
+
+    @Test
+    void createArea_localityInheritsStateAndCityFromParent() {
+        MarketArea state = MarketArea.builder()
+                .id(1L)
+                .level(MarketArea.Level.STATE)
+                .name("Goa")
+                .stateName("Goa")
+                .active(true)
+                .build();
+        MarketArea city = MarketArea.builder()
+                .id(2L)
+                .parent(state)
+                .level(MarketArea.Level.CITY)
+                .name("Panaji")
+                .stateName("Goa")
+                .cityName("Panaji")
+                .active(true)
+                .build();
+        when(areaRepository.findById(2L)).thenReturn(Optional.of(city));
+        when(areaRepository.save(any(MarketArea.class))).thenAnswer(inv -> {
+            MarketArea saved = inv.getArgument(0);
+            saved.setId(3L);
+            return saved;
+        });
+
+        var req = com.realestate.dto.MarketAreaCreateUpdateRequest.builder()
+                .level("LOCALITY")
+                .name("Altinho")
+                .parentId(2L)
+                .active(true)
+                .build();
+        var dto = service.createArea(req);
+
+        assertEquals("Altinho", dto.getName());
+        assertEquals("Goa", dto.getStateName());
+        assertEquals("Panaji", dto.getCityName());
+    }
+
+    @Test
+    void createArea_cityWithoutParent_throwsBadRequest() {
+        var req = com.realestate.dto.MarketAreaCreateUpdateRequest.builder()
+                .level("CITY")
+                .name("Orphan")
+                .active(true)
+                .build();
+        assertThrows(com.realestate.exception.BadRequestException.class, () -> service.createArea(req));
+    }
 }

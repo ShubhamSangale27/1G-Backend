@@ -8,10 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 @Component
 @Slf4j
@@ -19,6 +16,12 @@ public class FirebaseInitializer {
 
     @Value("${app.firebase.credentials-path:}")
     private String credentialsPath;
+
+    @Value("${app.firebase.credentials-json:}")
+    private String credentialsJson;
+
+    @Value("${app.firebase.credentials-base64:}")
+    private String credentialsBase64;
 
     @Value("${app.firebase.enabled:false}")
     private boolean enabled;
@@ -29,18 +32,21 @@ public class FirebaseInitializer {
             log.warn("Firebase push is disabled (app.firebase.enabled=false). Admin push sends will be recorded but not delivered.");
             return;
         }
-        if (credentialsPath == null || credentialsPath.isBlank()) {
-            log.warn("Firebase credentials path not set. Push delivery disabled until FIREBASE_CREDENTIALS_PATH is configured.");
+        if (!FirebaseCredentialsLoader.hasAnySource(credentialsJson, credentialsBase64, credentialsPath)) {
+            log.warn(
+                    "Firebase credentials not set. Push delivery disabled until FIREBASE_CREDENTIALS_JSON, "
+                            + "FIREBASE_CREDENTIALS_BASE64, or FIREBASE_CREDENTIALS_PATH is configured.");
             return;
         }
-        Path path = Path.of(credentialsPath.trim());
-        if (!Files.isRegularFile(path)) {
-            log.warn("Firebase credentials file not found at {}. Push delivery disabled.", path);
-            return;
-        }
-        try (FileInputStream serviceAccount = new FileInputStream(path.toFile())) {
+        try {
+            GoogleCredentials credentials = FirebaseCredentialsLoader.load(
+                    credentialsJson, credentialsBase64, credentialsPath);
+            if (credentials == null) {
+                log.warn("Firebase credentials could not be loaded. Push delivery disabled.");
+                return;
+            }
             FirebaseOptions options = FirebaseOptions.builder()
-                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                    .setCredentials(credentials)
                     .build();
             if (FirebaseApp.getApps().isEmpty()) {
                 FirebaseApp.initializeApp(options);

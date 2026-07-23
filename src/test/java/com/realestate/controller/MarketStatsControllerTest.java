@@ -100,6 +100,57 @@ class MarketStatsControllerTest {
     }
 
     @Test
+    void listAreas_filtersByParentId_cascade() throws Exception {
+        MarketArea state = areaRepository.findAll().stream()
+                .filter(a -> a.getLevel() == MarketArea.Level.STATE)
+                .findFirst().orElseThrow();
+        MarketArea city = areaRepository.findAll().stream()
+                .filter(a -> a.getLevel() == MarketArea.Level.CITY)
+                .findFirst().orElseThrow();
+
+        mockMvc.perform(get("/market-stats/areas")
+                        .param("parentId", String.valueOf(state.getId()))
+                        .param("level", "CITY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].name", hasItem("Mumbai")));
+
+        mockMvc.perform(get("/market-stats/areas")
+                        .param("parentId", String.valueOf(city.getId()))
+                        .param("level", "LOCALITY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Andheri"));
+    }
+
+    @Test
+    void listAreas_inactiveAreaExcluded() throws Exception {
+        locality.setActive(false);
+        areaRepository.save(locality);
+
+        mockMvc.perform(get("/market-stats/areas")
+                        .param("state", "Maharashtra")
+                        .param("city", "Mumbai")
+                        .param("level", "LOCALITY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void listStates_returnsOnlyActiveStates() throws Exception {
+        areaRepository.save(MarketArea.builder()
+                .level(MarketArea.Level.STATE)
+                .name("Inactive Test State")
+                .stateName("Inactive Test State")
+                .stateSlug("inactive-test-state")
+                .active(false)
+                .build());
+
+        mockMvc.perform(get("/market-stats/areas").param("level", "STATE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].name", hasItem("Maharashtra")))
+                .andExpect(jsonPath("$[*].name", not(hasItem("Inactive Test State"))));
+    }
+
+    @Test
     void getStats_returnsHistoryAndCagr() throws Exception {
         mockMvc.perform(get("/market-stats")
                         .param("areaId", String.valueOf(locality.getId()))

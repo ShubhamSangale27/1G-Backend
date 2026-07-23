@@ -78,6 +78,8 @@ app:
   firebase:
     enabled: ${FIREBASE_ENABLED:false}
     credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+    credentials-json: ${FIREBASE_CREDENTIALS_JSON:}
+    credentials-base64: ${FIREBASE_CREDENTIALS_BASE64:}
 
 logging:
   level:

@@ -450,7 +450,7 @@ Mobile docs (under `1G-Mobile/`):
 
 ### 2026-07-21 — Admin push notifications (FCM) for mobile
 
-- **Backend (V15):** `device_tokens`, `push_campaigns` tables; `DeviceTokenController` (`POST/DELETE /devices/fcm-token`); `AdminPushNotificationController` (`POST/GET /admin/push-notifications`); `PushNotificationService` via Firebase Admin SDK (`FIREBASE_ENABLED`, `FIREBASE_CREDENTIALS_PATH`).
+- **Backend (V15):** `device_tokens`, `push_campaigns` tables; `DeviceTokenController` (`POST/DELETE /devices/fcm-token`); `AdminPushNotificationController` (`POST/GET /admin/push-notifications`); `PushNotificationService` via Firebase Admin SDK (`FIREBASE_ENABLED`; credentials via `FIREBASE_CREDENTIALS_JSON`, `FIREBASE_CREDENTIALS_BASE64`, or `FIREBASE_CREDENTIALS_PATH`).
 - **Web admin:** Push Notifications (Mobile) section — title, message, image URL, link URL, in-app vs browser, target role (ALL/USER/AGENT), campaign history.
 - **Mobile:** `firebase_core`, `firebase_messaging`, `flutter_local_notifications`; token register on login, unregister on logout; tap routes to go_router or external browser.
 - **Docs:** `1G-Mobile/PUSH_NOTIFICATIONS_SETUP.md` — Firebase project, google-services.json, service account, testing steps.
