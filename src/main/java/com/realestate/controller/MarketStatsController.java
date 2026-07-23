@@ -35,9 +35,16 @@ public class MarketStatsController {
     @GetMapping
     @Operation(summary = "Get historical stats and derived CAGR for an area/range")
     public ResponseEntity<MarketStatsResponse> getStats(
-            @RequestParam Long areaId,
+            @RequestParam(required = false) Long areaId,
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) Long localityId,
             @RequestParam(defaultValue = "5Y") String range) {
-        return ResponseEntity.ok(marketStatsService.getStats(areaId, range));
+        if (localityId != null || areaId != null) {
+            return ResponseEntity.ok(marketStatsService.getStats(
+                    localityId != null ? localityId : areaId, range));
+        }
+        return ResponseEntity.ok(marketStatsService.getStatsByLocation(state, city, null, range));
     }
 
     @PostMapping("/projection")

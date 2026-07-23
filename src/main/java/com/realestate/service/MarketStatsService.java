@@ -7,6 +7,7 @@ import com.realestate.exception.BadRequestException;
 import com.realestate.exception.ResourceNotFoundException;
 import com.realestate.repository.MarketAreaRepository;
 import com.realestate.repository.MarketStatSnapshotRepository;
+import com.realestate.service.market.MarketBenchmarkRates;
 import com.realestate.service.market.MarketDataProvider;
 import com.realestate.service.market.RbiHpiSeedProvider;
 import lombok.RequiredArgsConstructor;
@@ -34,18 +35,41 @@ public class MarketStatsService {
     private final MarketAreaRepository areaRepository;
     private final MarketStatSnapshotRepository snapshotRepository;
     private final RbiHpiSeedProvider rbiHpiSeedProvider;
+    private final MarketBenchmarkRates benchmarkRates;
 
     public List<MarketAreaDto> listAreas(Long parentId, String state, String city, String level) {
         MarketArea.Level lvl = parseLevelOrNull(level);
         String st = blankToNull(state);
         String ct = blankToNull(city);
+        if (lvl == MarketArea.Level.LOCALITY && st != null && ct != null) {
+            return areaRepository.findByActiveTrueAndLevelAndStateNameIgnoreCaseAndCityNameIgnoreCase(
+                            MarketArea.Level.LOCALITY, st, ct).stream()
+                    .map(MarketAreaDto::from)
+                    .collect(Collectors.toList());
+        }
         return areaRepository.findFiltered(parentId, st, ct, lvl).stream()
+                .map(MarketAreaDto::from)
+                .collect(Collectors.toList());
+    }
+
+    public List<MarketAreaDto> listLocalitiesAdmin(String state, String city) {
+        String st = blankToNull(state);
+        String ct = blankToNull(city);
+        if (st == null || ct == null) {
+            return areaRepository.findAllByOrderByLevelAscSortOrderAscNameAsc().stream()
+                    .filter(a -> a.getLevel() == MarketArea.Level.LOCALITY)
+                    .map(MarketAreaDto::from)
+                    .collect(Collectors.toList());
+        }
+        return areaRepository.findByActiveTrueAndLevelAndStateNameIgnoreCaseAndCityNameIgnoreCase(
+                        MarketArea.Level.LOCALITY, st, ct).stream()
                 .map(MarketAreaDto::from)
                 .collect(Collectors.toList());
     }
 
     public List<MarketAreaDto> listAllAreasAdmin() {
         return areaRepository.findAllByOrderByLevelAscSortOrderAscNameAsc().stream()
+                .filter(a -> a.getLevel() == MarketArea.Level.LOCALITY)
                 .map(MarketAreaDto::from)
                 .collect(Collectors.toList());
     }
@@ -53,11 +77,11 @@ public class MarketStatsService {
     @Transactional
     public MarketAreaDto createArea(MarketAreaCreateUpdateRequest req) {
         MarketArea.Level level = parseLevel(req.getLevel());
-        MarketArea parent = null;
-        if (req.getParentId() != null) {
-            parent = areaRepository.findById(req.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("MarketArea", req.getParentId()));
+        if (level != MarketArea.Level.LOCALITY) {
+            throw new BadRequestException("Only LOCALITY areas can be created by admin. States and cities are static.");
         }
+
+        MarketArea parent = resolveLocalityParent(req);
         validateHierarchy(level, parent);
 
         String name = req.getName().trim();
@@ -71,8 +95,8 @@ public class MarketStatsService {
                 .stateName(stateName)
                 .cityName(cityName)
                 .stateSlug(slugify(stateName))
-                .citySlug(level == MarketArea.Level.STATE ? null : slugify(cityName))
-                .locationSlug(level == MarketArea.Level.LOCALITY ? slugify(name) : null)
+                .citySlug(slugify(cityName))
+                .locationSlug(slugify(name))
                 .active(req.getActive() == null || req.getActive())
                 .sortOrder(req.getSortOrder() != null ? req.getSortOrder() : 0)
                 .build();
@@ -83,12 +107,11 @@ public class MarketStatsService {
     public MarketAreaDto updateArea(Long id, MarketAreaCreateUpdateRequest req) {
         MarketArea area = areaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("MarketArea", id));
-        MarketArea.Level level = parseLevel(req.getLevel());
-        MarketArea parent = null;
-        if (req.getParentId() != null) {
-            parent = areaRepository.findById(req.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("MarketArea", req.getParentId()));
+        if (area.getLevel() != MarketArea.Level.LOCALITY) {
+            throw new BadRequestException("Only LOCALITY areas can be edited. States and cities are static.");
         }
+        MarketArea.Level level = MarketArea.Level.LOCALITY;
+        MarketArea parent = resolveLocalityParent(req);
         validateHierarchy(level, parent);
 
         String name = req.getName().trim();
@@ -101,8 +124,8 @@ public class MarketStatsService {
         area.setStateName(stateName);
         area.setCityName(cityName);
         area.setStateSlug(slugify(stateName));
-        area.setCitySlug(level == MarketArea.Level.STATE ? null : slugify(cityName));
-        area.setLocationSlug(level == MarketArea.Level.LOCALITY ? slugify(name) : null);
+        area.setCitySlug(slugify(cityName));
+        area.setLocationSlug(slugify(name));
         if (req.getActive() != null) area.setActive(req.getActive());
         if (req.getSortOrder() != null) area.setSortOrder(req.getSortOrder());
         return MarketAreaDto.from(areaRepository.save(area));
@@ -216,18 +239,42 @@ public class MarketStatsService {
     public MarketStatsResponse getStats(Long areaId, String range) {
         MarketArea area = areaRepository.findById(areaId)
                 .orElseThrow(() -> new ResourceNotFoundException("MarketArea", areaId));
+        return buildStatsForArea(area, range);
+    }
+
+    @Transactional(readOnly = true)
+    public MarketStatsResponse getStatsByLocation(String state, String city, Long localityId, String range) {
+        String st = requireText(state, "state");
+        String ct = requireText(city, "city");
+        if (localityId != null) {
+            MarketArea locality = areaRepository.findById(localityId)
+                    .orElseThrow(() -> new ResourceNotFoundException("MarketArea", localityId));
+            if (locality.getLevel() != MarketArea.Level.LOCALITY) {
+                throw new BadRequestException("localityId must reference a LOCALITY area");
+            }
+            return buildStatsForArea(locality, range);
+        }
+        return buildBenchmarkStats(st, ct, range);
+    }
+
+    private MarketStatsResponse buildStatsForArea(MarketArea area, String range) {
         String normalizedRange = normalizeRange(range);
         LocalDate from = rangeStart(normalizedRange);
 
-        List<MarketStatSnapshot> snaps = findSnapshotsWithParentFallback(areaId, from);
+        List<MarketStatSnapshot> snaps = findSnapshotsWithParentFallback(area.getId(), from);
+        if (snaps.isEmpty() && from != null) {
+            snaps = findSnapshotsWithParentFallback(area.getId(), null);
+        }
 
         if (snaps.isEmpty()) {
+            BigDecimal benchmark = benchmarkForArea(area);
             return MarketStatsResponse.builder()
                     .area(MarketAreaDto.from(area))
                     .range(normalizedRange)
                     .dataAvailable(false)
-                    .message("No market statistics available for this area yet. An admin can add snapshots.")
-                    .derivedCagrPct(DEFAULT_CAGR)
+                    .message("No snapshots for this area yet. Using market average of "
+                            + benchmark + "% p.a. for " + areaLabel(area) + ".")
+                    .derivedCagrPct(benchmark)
                     .history(List.of())
                     .build();
         }
@@ -261,11 +308,40 @@ public class MarketStatsService {
                 .build();
     }
 
+    private MarketStatsResponse buildBenchmarkStats(String state, String city, String range) {
+        String normalizedRange = normalizeRange(range);
+        BigDecimal rate = benchmarkRates.forCity(state, city);
+        MarketArea virtual = MarketArea.builder()
+                .level(MarketArea.Level.CITY)
+                .name(city)
+                .stateName(state)
+                .cityName(city)
+                .active(true)
+                .build();
+        return MarketStatsResponse.builder()
+                .area(MarketAreaDto.from(virtual))
+                .range(normalizedRange)
+                .dataAvailable(false)
+                .message("Using market average growth rate of " + rate + "% p.a. for "
+                        + city + ", " + state + ". Add localities and snapshots in admin for precise data.")
+                .derivedCagrPct(rate)
+                .history(List.of())
+                .build();
+    }
+
     @Transactional(readOnly = true)
     public MarketProjectionResponse project(MarketProjectionRequest req) {
-        MarketStatsResponse market = getStats(req.getAreaId(), req.getRange());
+        String state = requireText(req.getState(), "state");
+        String city = requireText(req.getCity(), "city");
+        Long localityId = req.getLocalityId() != null ? req.getLocalityId() : req.getAreaId();
+        String range = normalizeRange(req.getRange());
+
+        MarketStatsResponse market = localityId != null
+                ? getStats(localityId, range)
+                : getStatsByLocation(state, city, null, range);
+
         BigDecimal regionalRate = market.getDerivedCagrPct() != null
-                ? market.getDerivedCagrPct() : DEFAULT_CAGR;
+                ? market.getDerivedCagrPct() : benchmarkRates.forCity(state, city);
         BigDecimal userRate = req.getExpectedRatePct() != null
                 ? req.getExpectedRatePct() : regionalRate;
 
@@ -275,16 +351,14 @@ public class MarketStatsService {
                 ? req.getMonthlyContribution() : BigDecimal.ZERO;
 
         List<MarketProjectionResponse.ProjectionPoint> points = new ArrayList<>();
-        // Historical portion scaled to initial investment using index series
+
         if (market.isDataAvailable() && market.getHistory() != null && market.getHistory().size() >= 2) {
             BigDecimal baseIdx = market.getHistory().get(0).getIndex();
-            int histYears = Math.max(1, (int) ChronoUnit.YEARS.between(
-                    market.getCoverageFrom(), market.getCoverageTo()));
+            int n = market.getHistory().size() - 1;
+            int histYears = Math.max(1, Math.min(years,
+                    (int) ChronoUnit.YEARS.between(market.getCoverageFrom(), market.getCoverageTo())));
             for (int y = 0; y <= histYears; y++) {
-                int idx = Math.min(
-                        market.getHistory().size() - 1,
-                        (int) Math.round((double) y / histYears * (market.getHistory().size() - 1))
-                );
+                int idx = Math.min(n, (int) Math.round((double) y / histYears * n));
                 BigDecimal histIdx = market.getHistory().get(idx).getIndex();
                 BigDecimal regional = initial.multiply(histIdx, MC).divide(baseIdx, MC)
                         .setScale(2, RoundingMode.HALF_UP);
@@ -296,31 +370,26 @@ public class MarketStatsService {
                         .forecast(false)
                         .build());
             }
-        }
-
-        // Forward forecast from year 0..years using rates (replace if no history)
-        if (points.isEmpty()) {
+            BigDecimal lastRegional = points.get(points.size() - 1).getRegional();
+            int lastYear = points.get(points.size() - 1).getYear();
+            for (int y = lastYear + 1; y <= years; y++) {
+                int forwardYears = y - lastYear;
+                BigDecimal regional = lumpSumFuture(lastRegional, regionalRate, forwardYears);
+                BigDecimal user = portfolioFuture(initial, monthly, userRate, y);
+                points.add(MarketProjectionResponse.ProjectionPoint.builder()
+                        .year(y)
+                        .regional(regional)
+                        .user(user)
+                        .forecast(true)
+                        .build());
+            }
+        } else {
             for (int y = 0; y <= years; y++) {
                 points.add(MarketProjectionResponse.ProjectionPoint.builder()
                         .year(y)
                         .regional(lumpSumFuture(initial, regionalRate, y))
                         .user(portfolioFuture(initial, monthly, userRate, y))
                         .forecast(y > 0)
-                        .build());
-            }
-        } else {
-            // Append forward projection beyond history using last regional value growth
-            BigDecimal lastRegional = points.get(points.size() - 1).getRegional();
-            int startYear = points.get(points.size() - 1).getYear();
-            for (int y = 1; y <= years; y++) {
-                int absYear = startYear + y;
-                BigDecimal regional = lumpSumFuture(lastRegional, regionalRate, y);
-                BigDecimal user = portfolioFuture(initial, monthly, userRate, absYear);
-                points.add(MarketProjectionResponse.ProjectionPoint.builder()
-                        .year(absYear)
-                        .regional(regional)
-                        .user(user)
-                        .forecast(true)
                         .build());
             }
         }
@@ -521,6 +590,78 @@ public class MarketStatsService {
             }
         }
         return snaps;
+    }
+
+    private MarketArea resolveLocalityParent(MarketAreaCreateUpdateRequest req) {
+        if (req.getParentId() != null) {
+            MarketArea parent = areaRepository.findById(req.getParentId())
+                    .orElseThrow(() -> new ResourceNotFoundException("MarketArea", req.getParentId()));
+            if (parent.getLevel() != MarketArea.Level.CITY) {
+                throw new BadRequestException("LOCALITY areas require a CITY parent");
+            }
+            return parent;
+        }
+        String stateName = requireText(req.getStateName(), "stateName");
+        String cityName = requireText(req.getCityName(), "cityName");
+        return ensureCityArea(stateName, cityName);
+    }
+
+    private MarketArea ensureCityArea(String stateName, String cityName) {
+        return areaRepository
+                .findFirstByActiveTrueAndLevelAndStateNameIgnoreCaseAndNameIgnoreCase(
+                        MarketArea.Level.CITY, stateName, cityName)
+                .orElseGet(() -> {
+                    MarketArea state = ensureStateArea(stateName);
+                    return areaRepository.save(MarketArea.builder()
+                            .parent(state)
+                            .level(MarketArea.Level.CITY)
+                            .name(cityName)
+                            .stateName(stateName)
+                            .cityName(cityName)
+                            .stateSlug(slugify(stateName))
+                            .citySlug(slugify(cityName))
+                            .active(true)
+                            .sortOrder(0)
+                            .build());
+                });
+    }
+
+    private MarketArea ensureStateArea(String stateName) {
+        return areaRepository
+                .findFirstByActiveTrueAndLevelAndStateNameIgnoreCaseAndNameIgnoreCase(
+                        MarketArea.Level.STATE, stateName, stateName)
+                .orElseGet(() -> areaRepository.save(MarketArea.builder()
+                        .level(MarketArea.Level.STATE)
+                        .name(stateName)
+                        .stateName(stateName)
+                        .stateSlug(slugify(stateName))
+                        .active(true)
+                        .sortOrder(0)
+                        .build()));
+    }
+
+    private BigDecimal benchmarkForArea(MarketArea area) {
+        if (area.getLevel() == MarketArea.Level.LOCALITY) {
+            return benchmarkRates.forCity(area.getStateName(), area.getCityName());
+        }
+        if (area.getLevel() == MarketArea.Level.CITY) {
+            return benchmarkRates.forCity(area.getStateName(), area.getName());
+        }
+        return benchmarkRates.forState(area.getStateName());
+    }
+
+    private static String areaLabel(MarketArea area) {
+        if (area.getLevel() == MarketArea.Level.LOCALITY) {
+            return area.getName() + ", " + area.getCityName();
+        }
+        return area.getName();
+    }
+
+    private static String requireText(String value, String field) {
+        if (!StringUtils.hasText(value)) {
+            throw new BadRequestException(field + " is required");
+        }
+        return value.trim();
     }
 
     private void ensureUniqueSnapshot(Long areaId, LocalDate date,

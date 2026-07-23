@@ -179,13 +179,68 @@ class MarketStatsControllerTest {
                         .param("range", "1Y"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.dataAvailable").value(false))
-                .andExpect(jsonPath("$.message", containsString("No market statistics")));
+                .andExpect(jsonPath("$.message", containsString("No snapshots")));
+    }
+
+    @Test
+    void projection_withSnapshots_usesSnapshotCagr() throws Exception {
+        MarketProjectionRequest body = MarketProjectionRequest.builder()
+                .state("Maharashtra")
+                .city("Mumbai")
+                .localityId(locality.getId())
+                .range("5Y")
+                .initialAmount(new BigDecimal("1000000"))
+                .monthlyContribution(new BigDecimal("10000"))
+                .years(5)
+                .expectedRatePct(new BigDecimal("10"))
+                .build();
+
+        mockMvc.perform(post("/market-stats/projection")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.points", hasSize(greaterThan(0))))
+                .andExpect(jsonPath("$.market.dataAvailable").value(true))
+                .andExpect(jsonPath("$.regionalFinal").isNumber());
+    }
+
+    @Test
+    void projection_withoutLocality_usesCityBenchmark() throws Exception {
+        MarketProjectionRequest body = MarketProjectionRequest.builder()
+                .state("Maharashtra")
+                .city("Mumbai")
+                .range("5Y")
+                .initialAmount(new BigDecimal("1000000"))
+                .monthlyContribution(new BigDecimal("10000"))
+                .years(5)
+                .build();
+
+        mockMvc.perform(post("/market-stats/projection")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.regionalRatePct").value(7.2))
+                .andExpect(jsonPath("$.market.dataAvailable").value(false))
+                .andExpect(jsonPath("$.market.message", containsString("market average")));
+    }
+
+    @Test
+    void getStatsByLocation_returnsBenchmarkForCity() throws Exception {
+        mockMvc.perform(get("/market-stats")
+                        .param("state", "Karnataka")
+                        .param("city", "Bangalore")
+                        .param("range", "5Y"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.derivedCagrPct").value(8.8))
+                .andExpect(jsonPath("$.dataAvailable").value(false));
     }
 
     @Test
     void projection_returnsLines() throws Exception {
         MarketProjectionRequest body = MarketProjectionRequest.builder()
-                .areaId(locality.getId())
+                .state("Maharashtra")
+                .city("Mumbai")
+                .localityId(locality.getId())
                 .range("5Y")
                 .initialAmount(new BigDecimal("1000000"))
                 .monthlyContribution(new BigDecimal("10000"))

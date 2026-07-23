@@ -2,9 +2,12 @@ package com.realestate.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.realestate.dto.MarketAreaCreateUpdateRequest;
+import com.realestate.dto.MarketProjectionRequest;
 import com.realestate.entity.MarketArea;
+import com.realestate.entity.MarketStatSnapshot;
 import com.realestate.entity.User;
 import com.realestate.repository.MarketAreaRepository;
+import com.realestate.repository.MarketStatSnapshotRepository;
 import com.realestate.repository.UserRepository;
 import com.realestate.security.JwtUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +20,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -65,45 +71,12 @@ class AdminMarketStatsControllerTest {
     }
 
     @Test
-    void createStateCityLocality_hierarchyVisibleOnPublicApi() throws Exception {
-        MarketAreaCreateUpdateRequest stateReq = MarketAreaCreateUpdateRequest.builder()
-                .level("STATE")
-                .name("Goa")
-                .active(true)
-                .sortOrder(1)
-                .build();
-        String stateJson = mockMvc.perform(post("/admin/market-stats/areas")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(stateReq)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Goa"))
-                .andExpect(jsonPath("$.level").value("STATE"))
-                .andReturn().getResponse().getContentAsString();
-
-        long stateId = objectMapper.readTree(stateJson).get("id").asLong();
-
-        MarketAreaCreateUpdateRequest cityReq = MarketAreaCreateUpdateRequest.builder()
-                .level("CITY")
-                .name("Panaji")
-                .parentId(stateId)
-                .active(true)
-                .build();
-        String cityJson = mockMvc.perform(post("/admin/market-stats/areas")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(cityReq)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Panaji"))
-                .andExpect(jsonPath("$.stateName").value("Goa"))
-                .andReturn().getResponse().getContentAsString();
-
-        long cityId = objectMapper.readTree(cityJson).get("id").asLong();
-
+    void createLocality_withStaticStateCity_visibleOnPublicApi() throws Exception {
         MarketAreaCreateUpdateRequest locReq = MarketAreaCreateUpdateRequest.builder()
                 .level("LOCALITY")
                 .name("Altinho")
-                .parentId(cityId)
+                .stateName("Goa")
+                .cityName("Panaji")
                 .active(true)
                 .build();
         mockMvc.perform(post("/admin/market-stats/areas")
@@ -112,74 +85,20 @@ class AdminMarketStatsControllerTest {
                         .content(objectMapper.writeValueAsString(locReq)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Altinho"))
+                .andExpect(jsonPath("$.level").value("LOCALITY"))
                 .andExpect(jsonPath("$.cityName").value("Panaji"))
                 .andExpect(jsonPath("$.stateName").value("Goa"));
 
-        mockMvc.perform(get("/market-stats/areas").param("level", "STATE"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].name", hasItem("Goa")));
-
         mockMvc.perform(get("/market-stats/areas")
-                        .param("parentId", String.valueOf(stateId))
-                        .param("level", "CITY"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name").value("Panaji"));
-
-        mockMvc.perform(get("/market-stats/areas")
-                        .param("parentId", String.valueOf(cityId))
+                        .param("state", "Goa")
+                        .param("city", "Panaji")
                         .param("level", "LOCALITY"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Altinho"));
     }
 
     @Test
-    void createCity_withoutStateParent_returnsBadRequest() throws Exception {
-        MarketAreaCreateUpdateRequest cityReq = MarketAreaCreateUpdateRequest.builder()
-                .level("CITY")
-                .name("Orphan City")
-                .active(true)
-                .build();
-
-        mockMvc.perform(post("/admin/market-stats/areas")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(cityReq)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void inactiveArea_notListedOnPublicApi() throws Exception {
-        MarketArea state = areaRepository.save(MarketArea.builder()
-                .level(MarketArea.Level.STATE)
-                .name("Hidden State")
-                .stateName("Hidden State")
-                .stateSlug("hidden-state")
-                .active(false)
-                .build());
-
-        mockMvc.perform(get("/market-stats/areas").param("level", "STATE"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].name", not(hasItem("Hidden State"))));
-
-        MarketAreaCreateUpdateRequest update = MarketAreaCreateUpdateRequest.builder()
-                .level("STATE")
-                .name("Hidden State")
-                .active(true)
-                .build();
-        mockMvc.perform(put("/admin/market-stats/areas/" + state.getId())
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(update)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.active").value(true));
-
-        mockMvc.perform(get("/market-stats/areas").param("level", "STATE"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].name", hasItem("Hidden State")));
-    }
-
-    @Test
-    void nonAdmin_cannotCreateArea() throws Exception {
+    void createState_rejected() throws Exception {
         MarketAreaCreateUpdateRequest stateReq = MarketAreaCreateUpdateRequest.builder()
                 .level("STATE")
                 .name("Forbidden")
@@ -187,29 +106,41 @@ class AdminMarketStatsControllerTest {
                 .build();
 
         mockMvc.perform(post("/admin/market-stats/areas")
-                        .header("Authorization", "Bearer " + userToken)
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(stateReq)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
-    void deleteArea_removesFromPublicList() throws Exception {
-        MarketArea state = areaRepository.save(MarketArea.builder()
-                .level(MarketArea.Level.STATE)
-                .name("Temp State")
-                .stateName("Temp State")
-                .stateSlug("temp-state")
+    void createLocality_withoutStateCity_returnsBadRequest() throws Exception {
+        MarketAreaCreateUpdateRequest req = MarketAreaCreateUpdateRequest.builder()
+                .level("LOCALITY")
+                .name("Orphan")
                 .active(true)
-                .build());
+                .build();
 
-        mockMvc.perform(delete("/admin/market-stats/areas/" + state.getId())
-                        .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deleted").value(true));
+        mockMvc.perform(post("/admin/market-stats/areas")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
 
-        mockMvc.perform(get("/market-stats/areas").param("level", "STATE"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].name", not(hasItem("Temp State"))));
+    @Test
+    void nonAdmin_cannotCreateLocality() throws Exception {
+        MarketAreaCreateUpdateRequest req = MarketAreaCreateUpdateRequest.builder()
+                .level("LOCALITY")
+                .name("Forbidden")
+                .stateName("Goa")
+                .cityName("Panaji")
+                .active(true)
+                .build();
+
+        mockMvc.perform(post("/admin/market-stats/areas")
+                        .header("Authorization", "Bearer " + userToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
     }
 }

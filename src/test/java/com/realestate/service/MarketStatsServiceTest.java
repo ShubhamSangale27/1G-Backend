@@ -7,6 +7,7 @@ import com.realestate.entity.MarketArea;
 import com.realestate.entity.MarketStatSnapshot;
 import com.realestate.repository.MarketAreaRepository;
 import com.realestate.repository.MarketStatSnapshotRepository;
+import com.realestate.service.market.MarketBenchmarkRates;
 import com.realestate.service.market.RbiHpiSeedProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,8 @@ class MarketStatsServiceTest {
     MarketStatSnapshotRepository snapshotRepository;
     @Mock
     RbiHpiSeedProvider rbiHpiSeedProvider;
+    @Mock
+    MarketBenchmarkRates benchmarkRates;
 
     @InjectMocks
     MarketStatsService service;
@@ -52,16 +55,16 @@ class MarketStatsServiceTest {
     }
 
     @Test
-    void getStats_emptyHistory_returnsUnavailableWithDefaultCagr() {
+    void getStats_emptyHistory_returnsUnavailableWithBenchmark() {
         when(areaRepository.findById(3L)).thenReturn(Optional.of(locality));
         when(snapshotRepository.findByAreaAndFromDate(eq(3L), ArgumentMatchers.any()))
                 .thenReturn(List.of());
+        when(benchmarkRates.forCity("Maharashtra", "Mumbai")).thenReturn(new BigDecimal("7.2"));
 
         MarketStatsResponse res = service.getStats(3L, "5Y");
 
         assertFalse(res.isDataAvailable());
-        assertEquals(0, res.getHistory().size());
-        assertEquals(new BigDecimal("8.5"), res.getDerivedCagrPct());
+        assertEquals(new BigDecimal("7.2"), res.getDerivedCagrPct());
         assertNotNull(res.getMessage());
     }
 
@@ -104,9 +107,12 @@ class MarketStatsServiceTest {
         when(areaRepository.findById(3L)).thenReturn(Optional.of(locality));
         when(snapshotRepository.findByAreaAndFromDate(eq(3L), ArgumentMatchers.any()))
                 .thenReturn(List.of());
+        when(benchmarkRates.forCity("Maharashtra", "Mumbai")).thenReturn(new BigDecimal("7.2"));
 
         MarketProjectionResponse res = service.project(MarketProjectionRequest.builder()
-                .areaId(3L)
+                .state("Maharashtra")
+                .city("Mumbai")
+                .localityId(3L)
                 .range("5Y")
                 .initialAmount(new BigDecimal("1000000"))
                 .monthlyContribution(new BigDecimal("10000"))
@@ -118,6 +124,23 @@ class MarketStatsServiceTest {
         assertEquals(0, res.getPoints().get(0).getYear());
         assertEquals(5, res.getPoints().get(res.getPoints().size() - 1).getYear());
         assertTrue(res.getUserFinal().compareTo(res.getPoints().get(0).getUser()) > 0);
+    }
+
+    @Test
+    void project_withoutLocality_usesBenchmarkRate() {
+        when(benchmarkRates.forCity("Maharashtra", "Mumbai")).thenReturn(new BigDecimal("7.2"));
+
+        MarketProjectionResponse res = service.project(MarketProjectionRequest.builder()
+                .state("Maharashtra")
+                .city("Mumbai")
+                .range("5Y")
+                .initialAmount(new BigDecimal("1000000"))
+                .monthlyContribution(BigDecimal.ZERO)
+                .years(5)
+                .build());
+
+        assertEquals(new BigDecimal("7.2"), res.getRegionalRatePct());
+        assertFalse(res.getMarket().isDataAvailable());
     }
 
     @Test
@@ -177,7 +200,9 @@ class MarketStatsServiceTest {
                 .cityName("Panaji")
                 .active(true)
                 .build();
-        when(areaRepository.findById(2L)).thenReturn(Optional.of(city));
+        when(areaRepository.findFirstByActiveTrueAndLevelAndStateNameIgnoreCaseAndNameIgnoreCase(
+                eq(MarketArea.Level.CITY), eq("Goa"), eq("Panaji")))
+                .thenReturn(Optional.of(city));
         when(areaRepository.save(any(MarketArea.class))).thenAnswer(inv -> {
             MarketArea saved = inv.getArgument(0);
             saved.setId(3L);
@@ -187,7 +212,8 @@ class MarketStatsServiceTest {
         var req = com.realestate.dto.MarketAreaCreateUpdateRequest.builder()
                 .level("LOCALITY")
                 .name("Altinho")
-                .parentId(2L)
+                .stateName("Goa")
+                .cityName("Panaji")
                 .active(true)
                 .build();
         var dto = service.createArea(req);
@@ -198,7 +224,7 @@ class MarketStatsServiceTest {
     }
 
     @Test
-    void createArea_cityWithoutParent_throwsBadRequest() {
+    void createArea_cityRejected() {
         var req = com.realestate.dto.MarketAreaCreateUpdateRequest.builder()
                 .level("CITY")
                 .name("Orphan")

@@ -40,4 +40,10 @@ public interface MarketAreaRepository extends JpaRepository<MarketArea, Long> {
             @Param("level") MarketArea.Level level);
 
     List<MarketArea> findAllByOrderByLevelAscSortOrderAscNameAsc();
+
+    Optional<MarketArea> findFirstByActiveTrueAndLevelAndStateNameIgnoreCaseAndNameIgnoreCase(
+            MarketArea.Level level, String stateName, String name);
+
+    List<MarketArea> findByActiveTrueAndLevelAndStateNameIgnoreCaseAndCityNameIgnoreCase(
+            MarketArea.Level level, String stateName, String cityName);
 }
