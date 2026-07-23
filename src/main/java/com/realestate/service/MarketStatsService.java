@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,8 +45,7 @@ public class MarketStatsService {
         String st = blankToNull(state);
         String ct = blankToNull(city);
         if (lvl == MarketArea.Level.LOCALITY && st != null && ct != null) {
-            return areaRepository.findByActiveTrueAndLevelAndStateNameIgnoreCaseAndCityNameIgnoreCase(
-                            MarketArea.Level.LOCALITY, st, ct).stream()
+            return findLocalitiesForCity(st, ct).stream()
                     .map(MarketAreaDto::from)
                     .collect(Collectors.toList());
         }
@@ -63,10 +63,24 @@ public class MarketStatsService {
                     .map(MarketAreaDto::from)
                     .collect(Collectors.toList());
         }
-        return areaRepository.findByActiveTrueAndLevelAndStateNameIgnoreCaseAndCityNameIgnoreCase(
-                        MarketArea.Level.LOCALITY, st, ct).stream()
+        return findLocalitiesForCity(st, ct).stream()
                 .map(MarketAreaDto::from)
                 .collect(Collectors.toList());
+    }
+
+    /** Resolves admin localities by state/city fields, falling back to city parent hierarchy. */
+    private List<MarketArea> findLocalitiesForCity(String state, String city) {
+        List<MarketArea> byFields = areaRepository
+                .findByActiveTrueAndLevelAndStateNameIgnoreCaseAndCityNameIgnoreCase(
+                        MarketArea.Level.LOCALITY, state, city);
+        if (!byFields.isEmpty()) {
+            return byFields;
+        }
+        return areaRepository
+                .findFirstByActiveTrueAndLevelAndStateNameIgnoreCaseAndNameIgnoreCase(
+                        MarketArea.Level.CITY, state, city)
+                .map(cityArea -> areaRepository.findByActiveTrueAndParentIdOrderBySortOrderAscNameAsc(cityArea.getId()))
+                .orElse(List.of());
     }
 
     public List<MarketAreaDto> listAllAreasAdmin() {
@@ -154,11 +168,13 @@ public class MarketStatsService {
                 .orElseThrow(() -> new ResourceNotFoundException("MarketArea", req.getMarketAreaId()));
         MarketStatSnapshot.Granularity granularity = parseGranularity(req.getGranularity());
         ensureUniqueSnapshot(req.getMarketAreaId(), req.getSnapshotDate(), granularity, null);
+        BigDecimal priceIndex = resolvePriceIndexForSave(
+                req.getMarketAreaId(), req.getSnapshotDate(), req.getPriceIndex(), req.getAvgPricePerSqft(), null);
         MarketStatSnapshot snap = MarketStatSnapshot.builder()
                 .marketArea(area)
                 .snapshotDate(req.getSnapshotDate())
                 .granularity(granularity)
-                .priceIndex(req.getPriceIndex())
+                .priceIndex(priceIndex)
                 .avgPricePerSqft(req.getAvgPricePerSqft())
                 .yoyGrowthPct(req.getYoyGrowthPct())
                 .transactionVolume(req.getTransactionVolume())
@@ -179,10 +195,12 @@ public class MarketStatsService {
                 .orElseThrow(() -> new ResourceNotFoundException("MarketArea", req.getMarketAreaId()));
         MarketStatSnapshot.Granularity granularity = parseGranularity(req.getGranularity());
         ensureUniqueSnapshot(req.getMarketAreaId(), req.getSnapshotDate(), granularity, id);
+        BigDecimal priceIndex = resolvePriceIndexForSave(
+                req.getMarketAreaId(), req.getSnapshotDate(), req.getPriceIndex(), req.getAvgPricePerSqft(), id);
         snap.setMarketArea(area);
         snap.setSnapshotDate(req.getSnapshotDate());
         snap.setGranularity(granularity);
-        snap.setPriceIndex(req.getPriceIndex());
+        snap.setPriceIndex(priceIndex);
         snap.setAvgPricePerSqft(req.getAvgPricePerSqft());
         snap.setYoyGrowthPct(req.getYoyGrowthPct());
         snap.setTransactionVolume(req.getTransactionVolume());
@@ -366,10 +384,10 @@ public class MarketStatsService {
                 : getStatsByLocation(state, city, null, range);
 
         LocalDate from = rangeStart(range);
-        List<MarketStatSnapshot> snaps = localityId != null
-                ? collectSnapshotsForArea(areaRepository.findById(localityId)
-                        .orElseThrow(() -> new ResourceNotFoundException("MarketArea", localityId)), from)
-                : collectSnapshotsForCity(state, city, from);
+        List<MarketStatSnapshot> snaps = resolveSnapshots(state, city, localityId, from);
+        if (snaps.isEmpty() && market.isDataAvailable()) {
+            snaps = resolveSnapshots(state, city, localityId, null);
+        }
 
         BigDecimal benchmark = benchmarkRates.forCity(state, city);
         BigDecimal regionalRate = !snaps.isEmpty()
@@ -684,8 +702,7 @@ public class MarketStatsService {
 
     private List<MarketStatSnapshot> collectSnapshotsForCity(String state, String city, LocalDate from) {
         List<MarketStatSnapshot> merged = new ArrayList<>();
-        for (MarketArea loc : areaRepository.findByActiveTrueAndLevelAndStateNameIgnoreCaseAndCityNameIgnoreCase(
-                MarketArea.Level.LOCALITY, state, city)) {
+        for (MarketArea loc : findLocalitiesForCity(state, city)) {
             merged.addAll(collectSnapshotsForArea(loc, from));
         }
         areaRepository.findFirstByActiveTrueAndLevelAndStateNameIgnoreCaseAndNameIgnoreCase(
@@ -695,6 +712,15 @@ public class MarketStatsService {
             return collectSnapshotsForCity(state, city, null);
         }
         return mergeSnapshotsByDate(merged);
+    }
+
+    private List<MarketStatSnapshot> resolveSnapshots(String state, String city, Long localityId, LocalDate from) {
+        if (localityId != null) {
+            MarketArea area = areaRepository.findById(localityId)
+                    .orElseThrow(() -> new ResourceNotFoundException("MarketArea", localityId));
+            return collectSnapshotsForArea(area, from);
+        }
+        return collectSnapshotsForCity(state, city, from);
     }
 
     private static List<MarketStatSnapshot> sortSnapshots(List<MarketStatSnapshot> snaps) {
@@ -787,6 +813,12 @@ public class MarketStatsService {
         double scale = spanYears > histCap ? histCap / spanYears : 1.0;
 
         Map<Integer, MarketProjectionResponse.ProjectionPoint> pointsByYear = new LinkedHashMap<>();
+        pointsByYear.put(0, MarketProjectionResponse.ProjectionPoint.builder()
+                .year(0)
+                .regional(initial.setScale(2, RoundingMode.HALF_UP))
+                .user(portfolioFuture(initial, monthly, userRate, 0))
+                .forecast(false)
+                .build());
         for (MarketStatSnapshot snap : snaps) {
             double offsetYears = ChronoUnit.DAYS.between(firstDate, snap.getSnapshotDate()) / 365.25;
             int year = (int) Math.round(offsetYears * scale);
@@ -868,6 +900,33 @@ public class MarketStatsService {
             }
         }
         return null;
+    }
+
+    /**
+     * When avg ₹/sqft is supplied, store a normalized price index (earliest psf in the series = 100).
+     */
+    private BigDecimal resolvePriceIndexForSave(Long areaId, LocalDate snapshotDate, BigDecimal requestedIndex,
+                                                BigDecimal avgPsf, Long excludeSnapshotId) {
+        if (avgPsf == null || avgPsf.compareTo(BigDecimal.ZERO) <= 0) {
+            return requestedIndex != null ? requestedIndex : BigDecimal.valueOf(100);
+        }
+        BigDecimal baseline = snapshotRepository.findByMarketAreaIdOrderBySnapshotDateAsc(areaId).stream()
+                .filter(s -> excludeSnapshotId == null || !excludeSnapshotId.equals(s.getId()))
+                .map(MarketStatSnapshot::getAvgPricePerSqft)
+                .filter(p -> p != null && p.compareTo(BigDecimal.ZERO) > 0)
+                .findFirst()
+                .orElse(avgPsf);
+        if (snapshotDate != null) {
+            Optional<MarketStatSnapshot> earliestOther = snapshotRepository
+                    .findByMarketAreaIdOrderBySnapshotDateAsc(areaId).stream()
+                    .filter(s -> excludeSnapshotId == null || !excludeSnapshotId.equals(s.getId()))
+                    .filter(s -> s.getAvgPricePerSqft() != null && s.getAvgPricePerSqft().compareTo(BigDecimal.ZERO) > 0)
+                    .findFirst();
+            if (earliestOther.isPresent() && snapshotDate.isBefore(earliestOther.get().getSnapshotDate())) {
+                baseline = avgPsf;
+            }
+        }
+        return avgPsf.multiply(BigDecimal.valueOf(100)).divide(baseline, 4, RoundingMode.HALF_UP);
     }
 
     private void ensureUniqueSnapshot(Long areaId, LocalDate date,

@@ -157,6 +157,70 @@ class AdminMarketStatsControllerTest {
     }
 
     @Test
+    void createSnapshot_derivesPriceIndexFromAvgPricePerSqft() throws Exception {
+        MarketAreaCreateUpdateRequest locReq = MarketAreaCreateUpdateRequest.builder()
+                .level("LOCALITY")
+                .name("GrowthTest")
+                .stateName("Goa")
+                .cityName("Panaji")
+                .active(true)
+                .build();
+        String locJson = mockMvc.perform(post("/admin/market-stats/areas")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(locReq)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long locId = objectMapper.readTree(locJson).get("id").asLong();
+
+        var snap2021 = com.realestate.dto.MarketStatSnapshotCreateUpdateRequest.builder()
+                .marketAreaId(locId)
+                .snapshotDate(LocalDate.of(2021, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("70"))
+                .yoyGrowthPct(new BigDecimal("10"))
+                .build();
+        mockMvc.perform(post("/admin/market-stats/snapshots")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(snap2021)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priceIndex").value(100.0));
+
+        var snap2025 = com.realestate.dto.MarketStatSnapshotCreateUpdateRequest.builder()
+                .marketAreaId(locId)
+                .snapshotDate(LocalDate.of(2025, 1, 1))
+                .priceIndex(new BigDecimal("100"))
+                .avgPricePerSqft(new BigDecimal("130"))
+                .yoyGrowthPct(new BigDecimal("30"))
+                .build();
+        mockMvc.perform(post("/admin/market-stats/snapshots")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(snap2025)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priceIndex").value(185.7143));
+
+        MarketProjectionRequest body = MarketProjectionRequest.builder()
+                .state("Goa")
+                .city("Panaji")
+                .localityId(locId)
+                .range("MAX")
+                .initialAmount(new BigDecimal("1000000"))
+                .monthlyContribution(BigDecimal.ZERO)
+                .years(10)
+                .build();
+        mockMvc.perform(post("/market-stats/projection")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.market.dataAvailable").value(true))
+                .andExpect(jsonPath("$.regionalRatePct").value(closeTo(15.97, 0.5)))
+                .andExpect(jsonPath("$.regionalRatePct").value(not(8.5)))
+                .andExpect(jsonPath("$.regionalFinal").value(greaterThan(1000000.0)));
+    }
+
+    @Test
     void nonAdmin_cannotCreateLocality() throws Exception {
         MarketAreaCreateUpdateRequest req = MarketAreaCreateUpdateRequest.builder()
                 .level("LOCALITY")
