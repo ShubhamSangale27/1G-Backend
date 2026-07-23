@@ -183,6 +183,45 @@ class MarketStatsControllerTest {
     }
 
     @Test
+    void projection_withSnapshots_plotsFromSnapshotIndices() throws Exception {
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2021, 3, 31))
+                .priceIndex(new BigDecimal("100"))
+                .yoyGrowthPct(new BigDecimal("8.0"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+        snapshotRepository.save(MarketStatSnapshot.builder()
+                .marketArea(locality)
+                .snapshotDate(LocalDate.of(2024, 3, 31))
+                .priceIndex(new BigDecimal("130"))
+                .yoyGrowthPct(new BigDecimal("9.0"))
+                .granularity(MarketStatSnapshot.Granularity.QUARTERLY)
+                .sourceType(MarketStatSnapshot.SourceType.ADMIN)
+                .build());
+
+        MarketProjectionRequest body = MarketProjectionRequest.builder()
+                .state("Maharashtra")
+                .city("Mumbai")
+                .localityId(locality.getId())
+                .range("MAX")
+                .initialAmount(new BigDecimal("1000000"))
+                .monthlyContribution(BigDecimal.ZERO)
+                .years(10)
+                .build();
+
+        mockMvc.perform(post("/market-stats/projection")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.market.dataAvailable").value(true))
+                .andExpect(jsonPath("$.points[0].regional").value(1000000))
+                .andExpect(jsonPath("$.points[0].forecast").value(false))
+                .andExpect(jsonPath("$.regionalRatePct").isNumber());
+    }
+
+    @Test
     void projection_withSnapshots_usesSnapshotCagr() throws Exception {
         MarketProjectionRequest body = MarketProjectionRequest.builder()
                 .state("Maharashtra")
@@ -205,10 +244,10 @@ class MarketStatsControllerTest {
     }
 
     @Test
-    void projection_withoutLocality_usesCityBenchmark() throws Exception {
+    void projection_withoutLocality_usesCityBenchmarkWhenNoSnapshots() throws Exception {
         MarketProjectionRequest body = MarketProjectionRequest.builder()
-                .state("Maharashtra")
-                .city("Mumbai")
+                .state("Goa")
+                .city("Panaji")
                 .range("5Y")
                 .initialAmount(new BigDecimal("1000000"))
                 .monthlyContribution(new BigDecimal("10000"))
@@ -219,7 +258,7 @@ class MarketStatsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.regionalRatePct").value(7.2))
+                .andExpect(jsonPath("$.regionalRatePct").value(6.5))
                 .andExpect(jsonPath("$.market.dataAvailable").value(false))
                 .andExpect(jsonPath("$.market.message", containsString("market average")));
     }

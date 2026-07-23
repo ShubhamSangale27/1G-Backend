@@ -38,5 +38,6 @@ public class MarketStatsResponse {
         private LocalDate date;
         private BigDecimal index;
         private BigDecimal avgPricePerSqft;
+        private BigDecimal yoyGrowthPct;
     }
 }

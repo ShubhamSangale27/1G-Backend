@@ -128,6 +128,35 @@ class AdminMarketStatsControllerTest {
     }
 
     @Test
+    void createSnapshot_futureDate_rejected() throws Exception {
+        MarketAreaCreateUpdateRequest locReq = MarketAreaCreateUpdateRequest.builder()
+                .level("LOCALITY")
+                .name("TestLoc")
+                .stateName("Goa")
+                .cityName("Panaji")
+                .active(true)
+                .build();
+        String locJson = mockMvc.perform(post("/admin/market-stats/areas")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(locReq)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long locId = objectMapper.readTree(locJson).get("id").asLong();
+
+        var snapReq = com.realestate.dto.MarketStatSnapshotCreateUpdateRequest.builder()
+                .marketAreaId(locId)
+                .snapshotDate(java.time.LocalDate.now().plusDays(1))
+                .priceIndex(new java.math.BigDecimal("100"))
+                .build();
+        mockMvc.perform(post("/admin/market-stats/snapshots")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(snapReq)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void nonAdmin_cannotCreateLocality() throws Exception {
         MarketAreaCreateUpdateRequest req = MarketAreaCreateUpdateRequest.builder()
                 .level("LOCALITY")
