@@ -1,6 +1,6 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-11-21 (sold-out + Flat/PG + EN/HI/MR i18n on `update/prod-211126`)
+Last updated: 2026-11-21 (site-wide EN/HI/MR i18n — full pages, not header-only — on `update/prod-211126`)
 
 This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, `1G-Backend`, and `1G-Mobile`.
 
@@ -557,8 +557,9 @@ Mobile docs (under `1G-Mobile/`):
   - Enum `PropertyType`: `HOUSE, FLAT, LAND, COMMERCIAL, PG` with `APARTMENT` API alias via `@JsonCreator` + `PropertyTypeConverter`.
   - Admin `PUT /admin/properties/{id}/sold-out?soldOut=`; DTO exposes `soldOut`.
   - Site visit booking rejected when sold out.
-- **Web:** Admin sold-out toggle; card/detail sold-out sticker; Flat/PG in search/form/home/footer; `I18nService` + `t` pipe + header language switcher (persisted).
+- **Web:** Admin sold-out toggle; card/detail sold-out sticker; Flat/PG in search/form/home/footer; `I18nService` + impure `t` pipe + header language switcher (persisted); `ApplicationRef.tick` on language change for site-wide CD.
+- **Web i18n scope (2026-11-21 fix):** Language switch translates complete website chrome — home, search, login/signup, footer, property detail, growth calculator, FAQ chatbot, dashboard titles, my-properties, profile, property form types, admin sold-out — not only the header/status bar. Catalogs: `EN`/`HI`/`MR` in `1G-Frontend/src/app/core/i18n/translations.ts`.
 - **Mobile:** `soldOut` on Property; `SoldOutSticker` / `PropertyThumbnail`; Flat/PG; `AppStrings` + `LocaleController`; language on Profile; booking blocked when sold out.
-- **Tests:** Backend `PropertyTypeTest`, `AdminPropertySoldOutControllerTest`; frontend i18n/util/card/header specs; mobile `property_type_and_sold_out_test.dart`; E2E script sold-out + FLAT/PG/APARTMENT alias checks.
+- **Tests:** Backend `PropertyTypeTest`, `AdminPropertySoldOutControllerTest`; frontend `i18n-coverage.spec.ts`, `full-page-language.spec.ts` (home/search/login/footer + header→home), `i18n.service.spec.ts`, header/card specs; mobile `property_type_and_sold_out_test.dart`; E2E script sold-out + FLAT/PG/APARTMENT alias checks.
 - **Branch:** `update/prod-211126` (all three repos).
 
