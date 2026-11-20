@@ -196,6 +196,14 @@ public class AdminService {
         return PropertyDto.from(propertyRepository.save(p));
     }
 
+    @Transactional
+    public PropertyDto setSoldOut(Long propertyId, boolean soldOut) {
+        Property p = propertyRepository.findById(propertyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Property", propertyId));
+        p.setSoldOut(soldOut);
+        return PropertyDto.from(propertyRepository.save(p));
+    }
+
     @Transactional(readOnly = true)
     public List<UserDto> getPropertyViewers(Long propertyId) {
         propertyRepository.findById(propertyId).orElseThrow(() -> new ResourceNotFoundException("Property", propertyId));

@@ -45,6 +45,7 @@ public class PropertyDto {
     private Long visitCount;
     private Instant createdAt;
     private Boolean featured;
+    private Boolean soldOut;
 
     public static PropertyDto from(Property p) {
         return from(p, false);
@@ -81,6 +82,7 @@ public class PropertyDto {
                 .images(imgDtos)
                 .createdAt(p.getCreatedAt())
                 .featured(p.getFeatured() != null && p.getFeatured())
+                .soldOut(p.getSoldOut() != null && p.getSoldOut())
                 .build();
     }
 }

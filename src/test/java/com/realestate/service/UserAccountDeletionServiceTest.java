@@ -70,7 +70,7 @@ class UserAccountDeletionServiceTest {
                 .title("Listing To Delete")
                 .description("Will be removed with account")
                 .listingType(Property.ListingType.SALE)
-                .propertyType(Property.PropertyType.APARTMENT)
+                .propertyType(Property.PropertyType.FLAT)
                 .price(BigDecimal.valueOf(3_500_000))
                 .address("42 Delete Lane")
                 .city("Pune")

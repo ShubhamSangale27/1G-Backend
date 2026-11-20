@@ -1,14 +1,23 @@
 # 1Guntha Project Context — Source of Truth
 
-Last updated: 2026-07-21 (launcher icon fix + release APK/AAB)
+Last updated: 2026-11-21 (sold-out + Flat/PG + EN/HI/MR i18n on `update/prod-211126`)
 
-This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, and `1G-Backend`.
+This is the canonical context document for this workspace. It merges the most relevant information from historical markdown notes across `frontend`, `backend`, `1G-Frontend`, `1G-Backend`, and `1G-Mobile`.
+
+---
+
+## Session Rules (retain until user says otherwise)
+
+1. **Keep full project context** loaded from this file + related MDs across turns; do not drop prior decisions.
+2. **Update context files in the same session** whenever code/config changes (this file + `1G-Mobile/PROJECT_CONTEXT.md` when mobile is touched).
+3. **Cross-platform by default:** backend/API and shared behavior must work for **website (`1G-Frontend`) and mobile (`1G-Mobile`)** unless the user scopes to one client. Prefer shared API contracts; update both clients when UX is affected.
+4. **Active feature branch (from 2026-11-21):** `update/prod-211126` (created on top of `update/prod-200726` for Backend/Frontend; Mobile branched from `master`).
 
 ---
 
 ## Mandatory Maintenance Rule
 
-**This file is the single changelog for the entire 1Guntha workspace.** Every change made to `1G-Frontend`, `1G-Backend`, config, infra, or docs must be recorded here in the same session — no exceptions.
+**This file is the single changelog for the entire 1Guntha workspace.** Every change made to `1G-Frontend`, `1G-Backend`, `1G-Mobile`, config, infra, or docs must be recorded here in the same session — no exceptions.
 
 Applies to all work going forward (from 2026-06-09 onward), including:
 - Features, bug fixes, refactors, and UX tweaks
@@ -23,9 +32,10 @@ Applies to all work going forward (from 2026-06-09 onward), including:
 1. Set **Last updated** at the top of this file (date + short summary).
 2. Add a dated entry under `## Change Log` (newest last).
 3. Include **what changed and why** (problem → solution).
-4. List **impacted files/modules** (paths under `1G-Frontend/` and `1G-Backend/`).
+4. List **impacted files/modules** (paths under `1G-Frontend/`, `1G-Backend/`, and `1G-Mobile/` when relevant).
 5. Add **verification notes** (build, type-check, tests, or manual steps run).
 6. Note **follow-up items** if anything is partial or deferred.
+7. If mobile is affected, also update `1G-Mobile/PROJECT_CONTEXT.md`.
 
 Do not leave this file stale after code or config changes. If a session ends without updating this file, the work is incomplete.
 
@@ -40,7 +50,7 @@ Do not leave this file stale after code or config changes. If a session ends wit
   - **`1G-Frontend`** — Angular web app (primary web client)
   - **`1G-Mobile`** — Flutter Android/iOS app (native mobile client)
 - Legacy/alternate folders may exist as `frontend` + `backend`; prefer **`1G-*`** paths for active development.
-- Target feature branch for recent work: **`update/31052026`**
+- Active feature branch: **`update/prod-211126`** (base: **`update/prod-200726`**)
 - Primary stack:
   - Frontend: Angular
   - Backend: Spring Boot (Java 17, Maven)
@@ -514,4 +524,41 @@ Mobile docs (under `1G-Mobile/`):
 - **In-app:** `AppLogo` compact size reduced; wrapped in `FittedBox`; home `SliverAppBar` toolbarHeight 64.
 - **Script:** `prepare-brand-logo.ps1` generates `1G_logo_icon.png`.
 - **Builds:** Release APK and AAB built (debug signing — no `android/key.properties` on machine).
+
+### 2026-07-23 — Market stats: snapshot-driven CAGR + graph (not 8.5% default)
+
+- **Problem:** Admin snapshots with YoY (10/30/30) and ₹/sqft (70/100/130) still showed Area CAGR **8.5%** and a benchmark graph. Admin form defaults **price index = 100** for every row; CAGR/chart used flat index and ignored ₹/sqft.
+- **Backend (`MarketStatsService`):**
+  - `effectiveIndex()` — when price indices are flat, derive normalized index from `avgPricePerSqft` (first psf = 100).
+  - `resolvePriceIndexForSave()` — on create/update, persist index from ₹/sqft when supplied.
+  - `deriveRegionalRateFromSnapshots` / projection / stats history use effective indices; `computeCagr` returns `null` on invalid input (no hard-coded 8.5).
+  - Locality lookup fallback via city parent; snapshot date must be past-only.
+  - Heroku compile fix: use effectively-final `sortedSnaps` (lambda capture).
+- **Frontend calculator:** Prefer API `regionalRatePct` / `derivedCagrPct`; auto-select single locality; robust number parsing for chart/footer.
+- **Admin:** Locality-only create (static state/city from `indian-locations.ts`); snapshots past-date max.
+- **Tests:** Controller/service cases with exact 2021/2023/2025 example (~15.97% CAGR, not 8.5); admin snapshot index derivation.
+- **Expected for example data:** CAGR ~15.97%, range return ~85.7%, chart follows ₹70→₹130 growth.
+- **Follow-up:** Redeploy backend+frontend; re-save existing snapshots so stored index updates; mobile growth projector still not ported (API ready for both clients).
+
+### 2026-11-21 — Session restart: retain context + branch `update/prod-211126`
+
+- Re-read workspace MD/context docs; confirmed this file as changelog source of truth.
+- Session rules: retain context until user says otherwise; update context MDs on every code change; default to **web + mobile** compatibility.
+- Created feature branch **`update/prod-211126`**:
+  - `1G-Backend` / `1G-Frontend`: from `update/prod-200726`
+  - `1G-Mobile`: from `master` (no `prod-200726` branch existed)
+- No runtime code change in this documentation/branch-setup step.
+
+### 2026-11-21 — Sold-out sticker, Flat/PG types, EN/HI/MR i18n (web + mobile)
+
+- **Problem:** Need admin sold-out marking with e-commerce overlay; rename Apartment→Flat; add PG; website (+ mobile) language EN/HI/MR.
+- **Backend (`V16__property_sold_out_and_flat_pg.sql`):**
+  - `properties.sold_out` boolean; migrate `APARTMENT` → `FLAT`.
+  - Enum `PropertyType`: `HOUSE, FLAT, LAND, COMMERCIAL, PG` with `APARTMENT` API alias via `@JsonCreator` + `PropertyTypeConverter`.
+  - Admin `PUT /admin/properties/{id}/sold-out?soldOut=`; DTO exposes `soldOut`.
+  - Site visit booking rejected when sold out.
+- **Web:** Admin sold-out toggle; card/detail sold-out sticker; Flat/PG in search/form/home/footer; `I18nService` + `t` pipe + header language switcher (persisted).
+- **Mobile:** `soldOut` on Property; `SoldOutSticker` / `PropertyThumbnail`; Flat/PG; `AppStrings` + `LocaleController`; language on Profile; booking blocked when sold out.
+- **Tests:** Backend `PropertyTypeTest`, `AdminPropertySoldOutControllerTest`; frontend i18n/util/card/header specs; mobile `property_type_and_sold_out_test.dart`; E2E script sold-out + FLAT/PG/APARTMENT alias checks.
+- **Branch:** `update/prod-211126` (all three repos).
 

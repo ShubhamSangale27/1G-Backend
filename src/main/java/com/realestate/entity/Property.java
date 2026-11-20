@@ -1,5 +1,7 @@
 package com.realestate.entity;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -80,6 +82,11 @@ public class Property {
     @Builder.Default
     private Boolean featured = false;
 
+    /** When true, property is sold/rented out; shown with sold-out overlay on clients. */
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean soldOut = false;
+
     @OneToMany(mappedBy = "property", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC")
     @Builder.Default
@@ -104,7 +111,27 @@ public class Property {
     }
 
     public enum PropertyType {
-        HOUSE, APARTMENT, LAND, COMMERCIAL
+        HOUSE, FLAT, LAND, COMMERCIAL, PG;
+
+        /**
+         * Parses API/DB values; accepts legacy {@code APARTMENT} as {@link #FLAT}.
+         */
+        @JsonCreator
+        public static PropertyType fromApi(String raw) {
+            if (raw == null || raw.isBlank()) {
+                throw new IllegalArgumentException("propertyType is required");
+            }
+            String v = raw.trim().toUpperCase();
+            if ("APARTMENT".equals(v)) {
+                return FLAT;
+            }
+            return PropertyType.valueOf(v);
+        }
+
+        @JsonValue
+        public String toApi() {
+            return name();
+        }
     }
 
     public enum PropertyStatus {

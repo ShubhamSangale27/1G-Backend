@@ -104,7 +104,7 @@ class SiteVisitOtpFlowTest {
                 .title("Flow Test Property")
                 .description("Test")
                 .listingType(Property.ListingType.SALE)
-                .propertyType(Property.PropertyType.APARTMENT)
+                .propertyType(Property.PropertyType.FLAT)
                 .price(BigDecimal.valueOf(1000000))
                 .address("1 Test Lane")
                 .city("Mumbai")

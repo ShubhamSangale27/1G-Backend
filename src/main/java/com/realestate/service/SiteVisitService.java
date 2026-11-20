@@ -62,6 +62,9 @@ public class SiteVisitService {
     public SiteVisitDto book(SiteVisitRequest request, UserPrincipal principal) {
         Property property = propertyRepository.findById(request.getPropertyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Property", request.getPropertyId()));
+        if (Boolean.TRUE.equals(property.getSoldOut())) {
+            throw new BadRequestException("This property is marked as sold out. Site visits cannot be booked.");
+        }
         User user = userService.getById(principal.getId());
         List<SiteVisit.SiteVisitStatus> active = List.of(SiteVisit.SiteVisitStatus.PENDING_ASSIGNMENT, SiteVisit.SiteVisitStatus.ASSIGNED);
         if (siteVisitRepository.findFirstByUserIdAndPropertyIdAndStatusInOrderByCreatedAtDesc(principal.getId(), request.getPropertyId(), active).isPresent()) {

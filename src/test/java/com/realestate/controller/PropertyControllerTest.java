@@ -60,7 +60,7 @@ class PropertyControllerTest {
                 .title("Test Property")
                 .description("Desc")
                 .listingType(Property.ListingType.SALE)
-                .propertyType(Property.PropertyType.APARTMENT)
+                .propertyType(Property.PropertyType.FLAT)
                 .price(BigDecimal.valueOf(5000000))
                 .address("123 Test St")
                 .city("Mumbai")

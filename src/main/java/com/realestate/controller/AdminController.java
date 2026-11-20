@@ -70,6 +70,12 @@ public class AdminController {
         return ResponseEntity.ok(adminService.setFeatured(id, featured));
     }
 
+    @PutMapping("/properties/{id}/sold-out")
+    @Operation(summary = "Mark property as sold out or available")
+    public ResponseEntity<PropertyDto> setSoldOut(@PathVariable Long id, @RequestParam boolean soldOut) {
+        return ResponseEntity.ok(adminService.setSoldOut(id, soldOut));
+    }
+
     @GetMapping("/properties/{id}/viewers")
     @Operation(summary = "List users who viewed this property")
     public ResponseEntity<List<UserDto>> getPropertyViewers(@PathVariable Long id) {
